@@ -1,0 +1,31 @@
+# Vault-internal (do not publish)
+journal/
+sessions/
+design/PRIVATE_DM_DRAFTS.md
+FOUNDER_BRIEF.md
+SYSTEM_DESIGN.md
+
+# Generated environments + heavy artifacts
+harness/.venv/
+.venv/
+harness/server-pool/
+harness/results/
+
+# Tiered query data — public-tier release planned separately on HF Datasets
+harness/tasks/v1/queries.jsonl
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
