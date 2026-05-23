@@ -1,0 +1,182 @@
+# tcrun/servers_pinned.yaml
+# Server pinning table — mirror of ../../design/SERVER_POOL.md
+# SHAs and npm-lock entries populate as servers install during harness day 1.
+# This file's CONTENTS participate in run_id per ../../design/REPRODUCIBILITY.md §1
+# Last touched: 2026-05-23 (5 remaining no-OAuth servers install attempted; see install-blocker note)
+#
+# Note on distractor npm package names: best-effort from public MCP server registries.
+# Verify each at install time via `npm view <package>`; correct any mismatch before SHA pinning.
+#
+# install-progress (2026-05-23 Sat PM, main-context re-run): 5 of 6 remaining no-OAuth
+# servers now installed and pinned from the unblocked main-context shell. Pinned today:
+#   - oci git_sha (cloned from DevanshuNEU/lco-fork at HEAD)
+#   - aider_mcp git_sha (cloned from disler/aider-mcp-server at HEAD)
+#   - postgres_mcp tarball sha256 (npm pack @0.6.2; deprecated registry entry preserved locally)
+#   - brave_search_mcp tarball sha256 (npm pack @0.6.2; deprecated registry entry preserved locally)
+#   - slack_mcp tarball sha256 (npm pack @2025.4.25; deprecated registry entry preserved locally)
+# Still TBD:
+#   - github_mcp Docker image digest — Docker daemon returned HTTP 500 on image pull.
+#     Likely Docker Desktop API version mismatch; restart Docker Desktop and re-run
+#     `docker pull ghcr.io/github/github-mcp-server:latest && docker inspect ...`.
+# Linear + Notion intentionally deferred post-pilot (OAuth-gated; not blocking v1).
+
+primary_servers:
+  - name: oci
+    description: OpenCodeIntel — hybrid AST + BM25 + Cohere code retrieval (corresponding-author-authored; COI disclosed in RESEARCH_DESIGN.md §11)
+    install: self-hosted
+    repo: DevanshuNEU/lco-fork
+    install_path: server-pool/oci
+    git_sha: ea85ffdc99fbbdfe08b642eda8c199fcf972a9f8
+    pinned_at: 2026-05-23
+    auth: none
+    reachability: 1
+    coi: corresponding-author-authored
+    domain_overlap: primary
+
+  - name: github_mcp
+    description: GitHub MCP — repo search, issues, PRs, files (Docker-distributed Go binary per official migration 2025; ghcr.io/github/github-mcp-server)
+    install: docker
+    docker_image: ghcr.io/github/github-mcp-server
+    docker_tag: latest
+    image_digest: TBD  # Docker daemon HTTP 500 on pull attempt 2026-05-23 Sat PM; restart Docker Desktop and re-run `docker pull ... && docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/github/github-mcp-server`
+    auth: PAT
+    reachability: 2
+    domain_overlap: primary
+
+  - name: git_mcp
+    description: Git MCP — local git grep/log/blame
+    install: npx
+    package: "@modelcontextprotocol/server-git"
+    npm_version: TBD
+    npm_lock_hash: TBD
+    auth: none
+    reachability: 1
+    domain_overlap: primary
+
+  - name: aider_mcp
+    description: Aider MCP — code-agent integration
+    install: npx-or-pip
+    repo: disler/aider-mcp-server
+    install_path: server-pool/aider
+    git_sha: b2516fa466d0d851932da92ee6d0e66946db9efc
+    pinned_at: 2026-05-23
+    auth: none
+    reachability: 1
+    domain_overlap: primary
+
+  - name: fetch_mcp
+    description: Fetch MCP — web-fetch baseline (naive retrieval via GitHub README/issues)
+    install: npx
+    package: "@modelcontextprotocol/server-fetch"
+    npm_version: TBD
+    npm_lock_hash: TBD
+    auth: none
+    reachability: 1
+    domain_overlap: primary
+
+distractors:
+  - name: filesystem_mcp
+    description: Filesystem MCP — local file read/write
+    install: npx
+    package: "@modelcontextprotocol/server-filesystem"  # verify at install
+    npm_version: TBD
+    npm_lock_hash: TBD
+    auth: none
+    reachability: 1
+    domain_overlap: code-adjacent
+
+  - name: memory_mcp
+    description: Memory MCP — persistent agent memory
+    install: npx
+    package: "@modelcontextprotocol/server-memory"  # verify at install
+    npm_version: TBD
+    npm_lock_hash: TBD
+    auth: none
+    reachability: 1
+    domain_overlap: orthogonal
+
+  - name: sequential_thinking_mcp
+    description: Sequential Thinking MCP — step-by-step reasoning aid
+    install: npx
+    package: "@modelcontextprotocol/server-sequentialthinking"  # verify at install
+    npm_version: TBD
+    npm_lock_hash: TBD
+    auth: none
+    reachability: 1
+    domain_overlap: orthogonal
+
+  - name: time_mcp
+    description: Time MCP — clock + timezone utilities
+    install: npx
+    package: "@modelcontextprotocol/server-time"  # verify at install
+    npm_version: TBD
+    npm_lock_hash: TBD
+    auth: none
+    reachability: 1
+    domain_overlap: orthogonal
+
+  - name: sqlite_mcp
+    description: SQLite MCP — query a local sqlite database
+    install: npx
+    package: "@modelcontextprotocol/server-sqlite"  # verify at install
+    npm_version: TBD
+    npm_lock_hash: TBD
+    auth: none
+    reachability: 1
+    domain_overlap: code-adjacent
+
+  - name: postgres_mcp
+    description: PostgreSQL MCP — query a local postgres database
+    install: tarball  # npm package deprecated 2025; preserved as local tarball per REPRODUCIBILITY.md §1
+    package: "@modelcontextprotocol/server-postgres"
+    npm_version: "0.6.2"
+    tarball_path: server-pool/tarballs/modelcontextprotocol-server-postgres-0.6.2.tgz
+    tarball_sha256: af55200a01b13ae31949fb4a8864ee6043b891d00ff83330d1779b18aa5ba26f
+    pinned_at: 2026-05-23
+    auth: local-pg
+    reachability: 2
+    domain_overlap: code-adjacent
+
+  - name: brave_search_mcp
+    description: Brave Search MCP — web search via Brave API
+    install: tarball  # npm package deprecated 2025; preserved as local tarball per REPRODUCIBILITY.md §1
+    package: "@modelcontextprotocol/server-brave-search"
+    npm_version: "0.6.2"
+    tarball_path: server-pool/tarballs/modelcontextprotocol-server-brave-search-0.6.2.tgz
+    tarball_sha256: 91733a4e1e0c0de6738d3542135c40bd4356aa48a336191c855e4f9feac40f85
+    pinned_at: 2026-05-23
+    auth: api-key-free-tier
+    reachability: 2
+    domain_overlap: orthogonal
+
+  - name: linear_mcp
+    description: Linear MCP — issue tracker integration
+    install: npx
+    package: TBD  # third-party; verify at install (community-maintained MCP)
+    npm_version: TBD
+    npm_lock_hash: TBD
+    auth: api-key
+    reachability: 2
+    domain_overlap: orthogonal
+
+  - name: notion_mcp
+    description: Notion MCP — Notion workspace integration
+    install: npx
+    package: TBD  # third-party; verify at install
+    npm_version: TBD
+    npm_lock_hash: TBD
+    auth: oauth
+    reachability: 2
+    domain_overlap: orthogonal
+
+  - name: slack_mcp
+    description: Slack MCP — Slack workspace integration
+    install: tarball  # npm package deprecated 2025; preserved as local tarball per REPRODUCIBILITY.md §1
+    package: "@modelcontextprotocol/server-slack"
+    npm_version: "2025.4.25"
+    tarball_path: server-pool/tarballs/modelcontextprotocol-server-slack-2025.4.25.tgz
+    tarball_sha256: b7180332e64e506234ec7d6c688e9327645f1a7207f198fbd406fdf91dabd24f
+    pinned_at: 2026-05-23
+    auth: oauth
+    reachability: 2
+    domain_overlap: orthogonal

@@ -1,0 +1,59 @@
+[project]
+name = "tool-crowding"
+version = "0.1.0"
+description = "Multi-MCP discrimination interference benchmark"
+authors = [{name = "Devanshu Chicholikar"}]
+license = {text = "Apache-2.0"}
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "anthropic>=0.40",
+    "typer>=0.12",
+    "mcp>=0.9",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "tiktoken>=0.7",
+    "httpx>=0.27",
+    "tqdm>=4.66",
+    "tenacity>=8.0",
+    "structlog>=24.0",
+]
+
+[project.optional-dependencies]
+analysis = [
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+    "jupyter>=1.0",
+    "numpy>=1.26",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "pyright>=1.1",
+]
+
+[project.scripts]
+tcrun = "tcrun.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["tcrun", "tcrun.oracles"]
+
+[tool.setuptools.package-data]
+tcrun = ["servers_pinned.yaml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

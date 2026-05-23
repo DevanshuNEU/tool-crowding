@@ -1,0 +1,158 @@
+"""Tests for tcrun.results — Trial schema, JSONL writer, schema dispatch.
+
+Coverage targets per the prompt: schema validation, JSONL roundtrip,
+schema_version dispatch (v1.0 + v1.1 read correctly).
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from tcrun.results import (
+    CURRENT_SCHEMA_VERSION,
+    SCHEMA_VERSION_V1_0,
+    SCHEMA_VERSION_V1_1,
+    EnvFingerprintRef,
+    ResultWriter,
+    SamplingParams,
+    ServerEntry,
+    ToolCall,
+    Trial,
+    read_jsonl,
+    write_trial,
+)
+
+
+def _make_trial(**overrides) -> Trial:
+    base = dict(
+        harness_version="abc123",
+        run_id="r0",
+        cell_id="c0",
+        trial_id="t0",
+        started_at=datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 5, 23, 12, 1, tzinfo=timezone.utc),
+        task_id="v1-pub-001",
+        task_version="coir-v1",
+        task_difficulty="medium",
+        model_id="claude-sonnet-4-6",
+        model_provider="anthropic",
+        model_snapshot_id="claude-sonnet-4-6-20260315",
+        sampling_params=SamplingParams(),
+        server_set=[ServerEntry(server_name="oci", server_version="sha:abc",
+                                tool_count=3, description_tokens=120)],
+        N=1,
+        primary_server="oci",
+        ordering_seed=0,
+        tool_listing_strategy="full",
+        pass_criterion_id="symbol-plus-50pct-overlap-v1",
+        context_input_tokens=2500,
+        context_output_tokens=300,
+        tool_calls=[ToolCall(step_idx=1, server_called="oci", tool_called="search",
+                             args_hash="d3a", response_summary="ok", latency_ms=120)],
+        first_correct_tool_step=1,
+        error_type="none",
+        cost_usd=0.05,
+        trace_path="results/r0/traces/t0.jsonl",
+        seed=42,
+        oracle_version="pass_v1.py@sha256:abc",
+        env=EnvFingerprintRef(os="Darwin", python_version="3.11.7",
+                              package_hash="ph", machine_id="mid", git_sha="gs"),
+    )
+    base["pass"] = True
+    base.update(overrides)
+    return Trial.model_validate(base)
+
+
+def test_current_schema_version_is_v1_1():
+    assert CURRENT_SCHEMA_VERSION == SCHEMA_VERSION_V1_1
+
+
+def test_trial_validates_happy_path():
+    t = _make_trial()
+    assert t.schema_version == SCHEMA_VERSION_V1_1
+    assert t.is_padded_n1 is False
+    assert t.fake_tool_invoked is False
+    assert t.padding_skipped is None
+    # `pass` is exposed via alias.
+    assert t.model_dump(by_alias=True)["pass"] is True
+
+
+def test_trial_rejects_missing_required_field():
+    with pytest.raises(ValidationError):
+        Trial.model_validate({"schema_version": "1.1"})  # everything else missing
+
+
+def test_trial_rejects_bad_error_type():
+    with pytest.raises(ValidationError):
+        _make_trial(error_type="not_a_valid_enum_member")
+
+
+def test_writer_roundtrips_single_record(tmp_path: Path):
+    out = tmp_path / "results.jsonl"
+    trial = _make_trial()
+    write_trial(out, trial)
+    loaded = list(read_jsonl(out))
+    assert len(loaded) == 1
+    assert loaded[0].trial_id == "t0"
+    assert loaded[0].model_dump(by_alias=True)["pass"] is True
+
+
+def test_writer_appends_multiple_records_with_fsync(tmp_path: Path):
+    out = tmp_path / "results.jsonl"
+    with ResultWriter(out) as w:
+        w.write(_make_trial(trial_id="t0"))
+        w.write(_make_trial(trial_id="t1", is_padded_n1=True))
+    rows = list(read_jsonl(out))
+    assert [r.trial_id for r in rows] == ["t0", "t1"]
+    assert rows[1].is_padded_n1 is True
+
+
+def test_reader_dispatches_v1_0_to_v1_1_migration(tmp_path: Path):
+    """v1.0 records hydrate with default values for the three v1.1 fields."""
+    record = _make_trial().model_dump(by_alias=True, mode="json")
+    record["schema_version"] = SCHEMA_VERSION_V1_0
+    record.pop("is_padded_n1", None)
+    record.pop("fake_tool_invoked", None)
+    record.pop("padding_skipped", None)
+    out = tmp_path / "results.jsonl"
+    out.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rows = list(read_jsonl(out))
+    assert len(rows) == 1
+    # Migrated forward: schema_version bumped, defaults applied.
+    assert rows[0].schema_version == SCHEMA_VERSION_V1_1
+    assert rows[0].is_padded_n1 is False
+    assert rows[0].fake_tool_invoked is False
+    assert rows[0].padding_skipped is None
+
+
+def test_reader_rejects_unsupported_schema_version(tmp_path: Path):
+    record = _make_trial().model_dump(by_alias=True, mode="json")
+    record["schema_version"] = "9.9"
+    out = tmp_path / "results.jsonl"
+    out.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="unsupported schema_version"):
+        list(read_jsonl(out))
+
+
+def test_reader_skips_blank_lines(tmp_path: Path):
+    out = tmp_path / "results.jsonl"
+    record = _make_trial().model_dump_json(by_alias=True)
+    out.write_text(f"{record}\n\n{record}\n", encoding="utf-8")
+    rows = list(read_jsonl(out))
+    assert len(rows) == 2
+
+
+def test_padding_flags_persist_through_roundtrip(tmp_path: Path):
+    out = tmp_path / "results.jsonl"
+    t = _make_trial(is_padded_n1=True, fake_tool_invoked=True, padding_skipped="budget_negative")
+    write_trial(out, t)
+    rows = list(read_jsonl(out))
+    assert rows[0].is_padded_n1 is True
+    assert rows[0].fake_tool_invoked is True
+    assert rows[0].padding_skipped == "budget_negative"

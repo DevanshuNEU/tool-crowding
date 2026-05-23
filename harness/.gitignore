@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# Results (per FAIR: reproducible from run_id, not committed)
+results/
+server_cache/
+
+# Tasks held-back tier (per QUERY_SET_HYGIENE.md §7)
+tasks/v1/held_back.jsonl
+tasks/v1/sealed.jsonl
+
+# Environment lock (regenerated per machine; participates in run_id by content, not committed verbatim)
+# environment.lock is committed when freezing a release; mid-development versions stay local
+.env
+.envrc
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Notebooks
+.ipynb_checkpoints/

@@ -1,0 +1,46 @@
+# configs/mve.yaml — MVE config (Sat 2026-05-23 pilot + post-pilot v1 sweep)
+#
+# Resolves to a run_id per ../tcrun/config.py compute_run_id, which implements
+# ../SPEC.md Section 8 Identity rule v1.2.
+#
+# Path-typed fields participate in run_id by content hash. Non-path fields by value.
+# `out` does NOT participate (running to a different output dir does not change run_id).
+# See ../../design/REPRODUCIBILITY.md §1 for the 7-artifact chain spec.
+
+# Path-typed fields (content-hashed)
+task_set: tasks/v1/queries.jsonl
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - oci
+  - github_mcp
+  - git_mcp
+
+distractors:
+  - filesystem_mcp
+  - memory_mcp
+  - sequential_thinking_mcp
+  - time_mcp
+  - sqlite_mcp
+
+N: [1, 5, 10]
+runs_per_cell: 3
+model: claude-sonnet-4-6-20260131
+host: claude-desktop
+seed: 42
+
+# v1.2 amendment fields
+tool_listing_strategy: full              # "full" = retriever-OFF; "retriever-on" = top-k=5; "oracle-filter" = RQ5
+include_padded_n1_control: true
+include_no_mcp_baseline: false           # baseline 3 deferred to v1 full sweep
+include_random_tool_call_baseline: false # baseline 4 deferred to v1 full sweep
+ragmcp_replication: false                # external-validity probe runs as a separate config
+
+# Output (not hashed into run_id)
+out: results/exp-mve-001/

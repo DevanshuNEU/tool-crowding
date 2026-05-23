@@ -1,0 +1,22 @@
+{
+  "total_candidates": 261,
+  "accepted": 199,
+  "rejected": [],
+  "histogram": {
+    "lt_20": 0,
+    "small_20_40": 56,
+    "medium_41_90": 67,
+    "large_91_180": 76,
+    "gt_180": 0
+  },
+  "min_tokens": 30,
+  "max_tokens": 168,
+  "mean_tokens": 77.60301507537689,
+  "sha256": "b201e668278c4ab128e00efc1b1fffa1b594d2cb47ec9eb6cac58977f86c655a",
+  "seed": "tool-crowding-padded-N1-corpus-v1-2026-05-23",
+  "band_target_counts_by_author": {
+    "small": 115,
+    "medium": 62,
+    "large": 22
+  }
+}
