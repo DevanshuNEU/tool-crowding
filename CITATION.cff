@@ -1,0 +1,47 @@
+cff-version: 1.2.0
+title: "tool-crowding: A pre-registered benchmark for discrimination interference in multi-MCP code retrieval"
+message: "If you use this benchmark, methodology, or data, please cite it as below."
+type: software
+authors:
+  - given-names: Devanshu
+    family-names: Chicholikar
+    email: chicholkar.d@northeastern.edu
+    affiliation: Northeastern University
+    orcid: ""
+repository-code: "https://github.com/DevanshuNEU/tool-crowding"
+url: "https://github.com/DevanshuNEU/tool-crowding"
+abstract: >-
+  tool-crowding measures discrimination interference among
+  concurrently-installed Model Context Protocol (MCP) servers on a held-constant
+  code-retrieval task. The benchmark sweeps N (number of installed servers)
+  as a continuous independent variable, isolates the discrimination effect
+  from prompt-length capacity via a padded-N=1 control adapted from Chroma's
+  text-retrieval methodology, and publishes per-server Marginal Performance
+  Delta as a diagnostic. Pre-registered with four locked scenario abstracts
+  before pilot data; all results ship with paired-bootstrap confidence
+  intervals and a 7-artifact content-addressed run identity chain.
+license: Apache-2.0
+version: 0.1.0-pre-pilot
+date-released: 2026-05-23
+keywords:
+  - mcp
+  - model-context-protocol
+  - benchmark
+  - tool-use
+  - code-retrieval
+  - agentic-ai
+  - llm-evaluation
+  - pre-registration
+  - discrimination-interference
+  - reproducibility
+preferred-citation:
+  type: software
+  authors:
+    - given-names: Devanshu
+      family-names: Chicholikar
+      email: chicholkar.d@northeastern.edu
+      affiliation: Northeastern University
+  title: "tool-crowding: A pre-registered benchmark for discrimination interference in multi-MCP code retrieval"
+  year: 2026
+  url: "https://github.com/DevanshuNEU/tool-crowding"
+  notes: "Pre-pilot release. Preprint and v1 results forthcoming."

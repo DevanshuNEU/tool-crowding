@@ -1,62 +1,165 @@
 # tool-crowding
 
-> Multi-MCP discrimination interference benchmark for code-retrieval tasks. Pre-registered, reproducible, open methodology.
+> A pre-registered, open-methodology benchmark for measuring discrimination interference among concurrently-installed MCP servers on code retrieval.
 
-**Status (2026-05-23):** Pre-pilot. Harness scaffold complete, methodology locked, fake-tool corpus shipped. The 144-trial pre-registered pilot runs Mon 2026-05-26. Public launch with results: Wed 2026-05-27.
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-116%20passing-brightgreen.svg)](harness/tests/)
+[![Pre-registered](https://img.shields.io/badge/predictions-pre--registered-purple.svg)](design/PRE_REGISTRATION.md)
+[![Status](https://img.shields.io/badge/status-pre--pilot-orange.svg)](CHANGELOG.md)
+[![Cite](https://img.shields.io/badge/cite-CITATION.cff-blueviolet.svg)](CITATION.cff)
 
-## What this measures
+When you install 10 to 20 Model Context Protocol servers simultaneously (the realistic 2026 deployment), does your agent's ability to select the right tool degrade? If so, is the degradation caused by prompt-length capacity, by genuine discrimination interference among semantically-overlapping tool descriptions, or by retriever errors? tool-crowding measures all three under controlled conditions, isolates them via a padded-N=1 control adapted from Chroma's text-retrieval methodology, and publishes per-server Marginal Performance Delta as a diagnostic.
 
-When you install multiple MCP servers concurrently, does the agent's tool-selection accuracy degrade? If so:
+---
 
-1. Does the degradation come from prompt-length capacity, or from genuine discrimination interference among semantically-overlapping tool descriptions? (`padded-N=1` control answers this.)
-2. Which specific servers contribute most to the degradation? (per-server Marginal Performance Delta answers this.)
-3. Does a retriever (top-k=5) close the gap, or does it just trade one failure mode for another? (retriever ON/OFF axis answers this.)
+## Table of contents
 
-The 6-condition intersection the design fills: code-retrieval task × frontier-model panel × padded-N=1 length control × per-server MPD × pinned-version reproducibility × retriever ON/OFF.
+- [Status](#status)
+- [What we measure](#what-we-measure)
+- [Quickstart](#quickstart)
+- [Design](#design)
+- [Pre-registration](#pre-registration)
+- [What this is NOT](#what-this-is-not)
+- [Roadmap](#roadmap)
+- [Conflict of interest](#conflict-of-interest)
+- [Acknowledgments](#acknowledgments)
+- [Citation](#citation)
+- [Contributing](#contributing)
+- [License](#license)
 
-## Quickstart (post-pilot)
+## Status
+
+**Pre-pilot as of 2026-05-23.** Methodology locked across 10 binding design docs. 12-module Python harness with 116 passing pytest cases. 199-entry fake-tool corpus. Five hand-curated oracle smoke tests (5/5 pass). Pre-registered predictions and four scenario abstracts committed before the pilot runs.
+
+| Milestone | Date | State |
+|---|---|---|
+| Methodology locked | 2026-05-20 to 2026-05-22 | done |
+| Harness + corpus + tests | 2026-05-23 | done |
+| Query set + 50-trial calibration | 2026-05-24 | pending |
+| 144-trial pre-registered pilot | 2026-05-26 | pending |
+| Public launch + arXiv preprint draft | 2026-05-27 | pending |
+
+This README will be updated with verified numbers after the pilot lands. We do not over-claim.
+
+## What we measure
+
+Tool-crowding is operationalized as **discrimination interference**: the degradation in tool-selection accuracy attributable to the presence of other concurrently-installed tools whose descriptions are semantically similar enough to compete with the correct tool for selection, isolated from prompt-length effects via padded-N=1 controls. Full operational definition in [`design/FOUNDATION.md`](design/FOUNDATION.md) §1.0.
+
+The 6-condition intersection that the prior-art coverage map leaves open:
+
+1. **Code retrieval as the held-constant task**, not web search (RAG-MCP), booking APIs (LongFuncEval), or general agent tasks (MCPVerse)
+2. **A frontier-model panel** (Claude Sonnet 4.6, Opus 4.7, GPT-5-class, Gemini 2.5-class), not single-model or non-frontier-mixed
+3. **Padded-N=1 prompt-length control** adapted from Chroma into the MCP tool regime
+4. **Per-server Marginal Performance Delta** as a published per-server diagnostic
+5. **Full server SHA + tool-description + JSON-schema hashing into `run_id`** for reproducibility
+6. **Retriever ON/OFF as a second axis**, motivated by LiveMCPBench's 50% retrieval-side-error finding
+
+## Quickstart
+
+Requires Python 3.11 or later.
 
 ```bash
-# requires Python 3.11+
 git clone https://github.com/DevanshuNEU/tool-crowding
 cd tool-crowding/harness
-python -m venv .venv && .venv/bin/pip install -e ".[dev,analysis]"
-.venv/bin/python -m pytest tests/   # 116 tests, ~2s
+python -m venv .venv
+.venv/bin/pip install -e ".[dev,analysis]"
+.venv/bin/python -m pytest tests/   # 116 tests, ~2 seconds
 ```
 
-Running a sweep against the Anthropic API requires `ANTHROPIC_API_KEY` and the pinned server pool. See `harness/SPEC.md` for the full CLI and `design/REPRODUCIBILITY.md` for the 7-artifact identity chain.
+Running a sweep against the Anthropic API requires `ANTHROPIC_API_KEY` and the pinned server pool. See [`harness/SPEC.md`](harness/SPEC.md) for the CLI and [`design/REPRODUCIBILITY.md`](design/REPRODUCIBILITY.md) for the 7-artifact identity chain.
 
 ## Design
 
-The locked methodology lives in:
+The methodology is locked in 10 binding documents. Read them in this order:
 
-- [`RESEARCH_DESIGN.md`](RESEARCH_DESIGN.md) — canonical 11-section design + reviewer-2 dialectic
-- [`design/FOUNDATION.md`](design/FOUNDATION.md) — binding construct definition + ABC checklist score
-- [`design/PRE_REGISTRATION.md`](design/PRE_REGISTRATION.md) — four scenario abstracts pre-locked before data
-- [`design/PADDING_STRATEGY.md`](design/PADDING_STRATEGY.md) — the load-bearing F1 falsification arm
-- [`design/QUERY_SET_HYGIENE.md`](design/QUERY_SET_HYGIENE.md) — six layered contamination defenses
-- [`design/REPRODUCIBILITY.md`](design/REPRODUCIBILITY.md) — the 7-artifact content-addressed identity chain
-- [`design/SERVER_POOL.md`](design/SERVER_POOL.md) — 15-server pool with reachability + pinning
-- [`design/ADVERSARIAL_AUDIT.md`](design/ADVERSARIAL_AUDIT.md) — "how would I game this?"
-- [`design/CHART_LAYOUT.md`](design/CHART_LAYOUT.md) — the killer chart spec
-- [`design/PILOT_V0.md`](design/PILOT_V0.md) — the 224-trial Saturday pilot scope
-- [`harness/SPEC.md`](harness/SPEC.md) — engineering spec with DDIA principle-transfer audit
+1. [`RESEARCH_DESIGN.md`](RESEARCH_DESIGN.md) — canonical 11-section design with a reviewer-2 dialectic
+2. [`design/FOUNDATION.md`](design/FOUNDATION.md) — binding construct definition + ABC checklist (16/30 SAT-D)
+3. [`design/PRE_REGISTRATION.md`](design/PRE_REGISTRATION.md) — four scenario abstracts locked before data
+4. [`design/PADDING_STRATEGY.md`](design/PADDING_STRATEGY.md) — the load-bearing F1 falsification arm
+5. [`design/QUERY_SET_HYGIENE.md`](design/QUERY_SET_HYGIENE.md) — six layered contamination defenses
+6. [`design/REPRODUCIBILITY.md`](design/REPRODUCIBILITY.md) — the 7-artifact content-addressed identity chain
+7. [`design/SERVER_POOL.md`](design/SERVER_POOL.md) — 15-server pool with reachability + pinning
+8. [`design/ADVERSARIAL_AUDIT.md`](design/ADVERSARIAL_AUDIT.md) — six attack vectors on the benchmark itself
+9. [`design/CHART_LAYOUT.md`](design/CHART_LAYOUT.md) — the headline figure specification
+10. [`design/PILOT_V0.md`](design/PILOT_V0.md) — the 224-trial pilot scope
+
+Engineering spec lives at [`harness/SPEC.md`](harness/SPEC.md). It includes a principle-transfer audit against DDIA (Kleppmann 2017) that names the nine principles which DO NOT TRANSFER to a single-author research harness.
+
+## Pre-registration
+
+Predictions are locked in [`design/PRE_REGISTRATION.md`](design/PRE_REGISTRATION.md) before the pilot runs. Four scenario abstracts cover the outcome space with explicit priors:
+
+| Scenario | Prior | One-line claim |
+|---|---|---|
+| Clean win | 15% | Both frontier models show ≥5pp degradation; padded-N=1 leaves ≥5pp residual; MPD stable; description-similarity correlates |
+| Methodology contribution | 35% | Padded-N=1 accounts for most of the gap; contribution narrows to methodology port + per-server diagnostic |
+| Frontier robust | 25% | Both frontier models show <5pp degradation; per-server MPD becomes the lasting contribution |
+| Mixed by model class | 25% | Sonnet 4.6 inverted-U; GPT-5-class monotonic; deployment recommendations model-conditional |
+
+Decision rules per scenario are locked. **No post-hoc rationalization.** Kill criteria are documented at [`design/FOUNDATION.md`](design/FOUNDATION.md) §3 and reviewed weekly. If any fires, the project pivots or shelves cleanly.
+
+## What this is NOT
+
+- **NOT a leaderboard of MCP servers.** It is a methodology + diagnostic. Leaderboard framing implies competitive ranking; ours is descriptive.
+- **NOT a multi-task benchmark.** Code retrieval only for v1. API tasks, browser, file ops are v2.
+- **NOT a model-axis comparison.** Single primary model (Sonnet 4.6) carries the headline claim; other frontier models are robustness, not core.
+- **NOT a recommendation tool.** "Which server should you install" is downstream of the diagnostic, not its output.
+- **NOT a replacement for RAG-MCP, MCP-Zero, or LiveMCPBench.** It complements them by porting Chroma's length-isolation methodology into the tool regime.
+- **NOT a paper about whether tool-crowding exists.** It exists; six controlled studies and five production-engineering anchors confirm it. We measure its curve.
+
+## Roadmap
+
+- **v0.1.0-pre-pilot** (current) — methodology + harness + corpus, no empirical numbers yet
+- **v0.2.0-pilot** (planned 2026-05-27) — 144-trial pre-registered pilot results + headline chart
+- **v0.3.0-v1** (planned Weeks 4-5) — full sweep across frontier panel + arXiv preprint draft
+- **v1.1.0** (post-launch) — community PR contributions via `tcrun submit`, expanded server pool
+- **v2.0.0** (Q3-Q4 2026) — API tasks, browser tasks, mitigation comparison, mechanism study
+
+## Conflict of interest
+
+OpenCodeIntel (OCI) is one of the five primary code-retrieval servers in the pool and is authored by the corresponding author. This is disclosed in [`RESEARCH_DESIGN.md`](RESEARCH_DESIGN.md) §11. A leave-OCI-out sensitivity analysis is mandatory in the v1 paper.
+
+## Acknowledgments
+
+This work extends, rather than originates, multi-tool interference measurement. Specific prior art we lean on:
+
+- **RAG-MCP** ([Gan & Sun, arXiv 2505.03275](https://arxiv.org/abs/2505.03275)) for N-sweep methodology and the open question of retrieval-side errors at scale
+- **LongFuncEval** ([Kate et al., arXiv 2505.10570](https://arxiv.org/abs/2505.10570)) for per-position control as a separate axis from prompt-length
+- **MCPVerse** ([arXiv 2508.16260](https://arxiv.org/abs/2508.16260)) for three-condition pool variation with v1-v2 stability red flags
+- **LiveMCPBench** ([arXiv 2508.01780](https://arxiv.org/abs/2508.01780)) for the 50% retrieval-side-error finding that motivated our retriever ON/OFF second axis
+- **Chroma Context Rot** + **Liu et al.** ([arXiv 2510.05381](https://arxiv.org/abs/2510.05381)) for padded-length controls on text retrieval, which we port here to tools
+- **ABC** ([Zhu et al. arXiv 2505.10573](https://arxiv.org/abs/2505.10573)) for the 42-item benchmark discipline checklist this work scores against
+- **SWE-bench Pro** ([arXiv 2509.16941](https://arxiv.org/abs/2509.16941)) for failure-mode taxonomy + contamination defense patterns we adopt
+- **Anthropic Tool Search Tool** (Nov 2025) for the closed-eval anchor showing production impact (Opus 4 49→74%, Opus 4.5 79.5→88.1%)
+- **GitHub Copilot's 40-to-13 tools reduction** (Nov 2025) for the cleanest public production-engineering precedent (+2-5pp on SWE-Lancer + SWE-bench-Verified, -400ms TTFT)
+
+Community qualitative observations on multi-MCP interference (Simon Willison's *Too many MCPs*, Anthropic's *Code Execution with MCP* engineering blog, Block's Linear MCP restructure, Cursor's 40-tool cap) anchored the project's motivation.
 
 ## Citation
+
+If you use this benchmark, methodology, or data, please cite via [CITATION.cff](CITATION.cff) or:
 
 ```bibtex
 @misc{chicholikar2026toolcrowding,
   title  = {tool-crowding: A pre-registered benchmark for discrimination interference in multi-MCP code retrieval},
   author = {Chicholikar, Devanshu},
   year   = {2026},
-  note   = {Pre-pilot; preprint and v1 results forthcoming}
+  url    = {https://github.com/DevanshuNEU/tool-crowding},
+  note   = {Pre-pilot release; preprint and v1 results forthcoming}
 }
 ```
 
-## Conflict of interest
+## Contributing
 
-OCI (OpenCodeIntel) is one of the five primary code-retrieval servers in the pool and is authored by the corresponding author. This is disclosed in `RESEARCH_DESIGN.md §11`. A leave-OCI-out sensitivity analysis is mandatory in the v1 paper.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Pre-registration discipline, negative-results-welcome culture, and the maintainer-disclosure protocol are non-negotiable. Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+Security disclosures: [SECURITY.md](SECURITY.md).
 
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE).
+
+---
+
+*Pre-pilot status. Verified numbers and the headline chart land 2026-05-27.*

@@ -1,11 +1,49 @@
 [project]
 name = "tool-crowding"
 version = "0.1.0"
-description = "Multi-MCP discrimination interference benchmark"
-authors = [{name = "Devanshu Chicholikar"}]
+description = "Pre-registered benchmark for discrimination interference in multi-MCP code retrieval"
+authors = [
+    {name = "Devanshu Chicholikar", email = "chicholkar.d@northeastern.edu"},
+]
+maintainers = [
+    {name = "Devanshu Chicholikar", email = "chicholkar.d@northeastern.edu"},
+]
 license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.11"
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "benchmark",
+    "tool-use",
+    "code-retrieval",
+    "agentic-ai",
+    "llm-evaluation",
+    "pre-registration",
+    "discrimination-interference",
+    "reproducibility",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/DevanshuNEU/tool-crowding"
+Documentation = "https://github.com/DevanshuNEU/tool-crowding/blob/main/RESEARCH_DESIGN.md"
+Repository = "https://github.com/DevanshuNEU/tool-crowding"
+Issues = "https://github.com/DevanshuNEU/tool-crowding/issues"
+Changelog = "https://github.com/DevanshuNEU/tool-crowding/blob/main/CHANGELOG.md"
+"Pre-registration" = "https://github.com/DevanshuNEU/tool-crowding/blob/main/design/PRE_REGISTRATION.md"
 
 dependencies = [
     "anthropic>=0.40",

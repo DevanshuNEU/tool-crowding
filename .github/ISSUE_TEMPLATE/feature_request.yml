@@ -1,0 +1,65 @@
+name: Feature request
+description: A new feature or methodology extension, usually for v2
+labels: ["enhancement", "needs-triage"]
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Methodology changes are deferred to v2 unless they fix an outright v1 defect. If your request touches the locked predictions in `design/PRE_REGISTRATION.md` or the four scenario abstracts, declare that explicitly.
+
+        Methodology contributions without falsifiable predictions are not accepted.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this solve? Cite a paper, a production incident, or a falsification condition.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Concrete behavior change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you consider? Why was this one chosen?
+    validations:
+      required: false
+
+  - type: textarea
+    id: falsification
+    attributes:
+      label: Falsifiable prediction
+      description: If accepted, what observable would prove this feature DOES NOT WORK? Required for methodology contributions.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pre_reg_impact
+    attributes:
+      label: Does this touch locked pre-registered predictions or scenario abstracts?
+      options:
+        - "No (purely additive or post-v1)"
+        - "Yes (motivated by pilot data we have not yet released)"
+        - "Yes (post-v1 methodology extension for v2)"
+        - "Unsure"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: pr_willingness
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to open a PR implementing this
+          required: false
+        - label: I have read `CONTRIBUTING.md` and understand the pre-registration discipline
+          required: false

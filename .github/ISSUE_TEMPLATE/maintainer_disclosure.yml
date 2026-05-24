@@ -1,0 +1,87 @@
+name: Maintainer disclosure (server in our pool)
+description: For maintainers of MCP servers in the tool-crowding pool to dispute, correct, or update measurements
+labels: ["maintainer-disclosure", "needs-triage"]
+title: "[Disclosure] <server name>: <one-line summary>"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template is for maintainers of MCP servers in our pool (see `design/SERVER_POOL.md`). The 7-day pre-disclosure embargo protocol from `RESEARCH_DESIGN.md` §11 applies.
+
+        Anonymous leaderboards have no impact; we publish named results with full transparency, and your input here directly improves the next published version. We will reproduce your evidence before publishing a correction.
+
+  - type: input
+    id: server_name
+    attributes:
+      label: Server name
+      description: As listed in `design/SERVER_POOL.md`
+      placeholder: e.g. github_mcp
+    validations:
+      required: true
+
+  - type: input
+    id: maintainer_role
+    attributes:
+      label: Your role
+      description: Maintainer, author, employer, or community contributor
+      placeholder: e.g. "Maintainer of @scope/server-foo since 2024"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: disclosure_type
+    attributes:
+      label: Nature of disclosure
+      options:
+        - "Factual correction (we got something wrong)"
+        - "Outdated version tested (please re-run against the new release)"
+        - "Methodology concern (the way we test does not match how the server is intended to be used)"
+        - "Re-run request after a fix shipped"
+        - "Request to opt out of the published pool"
+        - "Other"
+    validations:
+      required: true
+
+  - type: input
+    id: version_we_tested
+    attributes:
+      label: Version we pinned (from servers_pinned.yaml)
+      placeholder: e.g. git_sha ea85ffdc... or npm_version 0.6.2
+    validations:
+      required: true
+
+  - type: input
+    id: current_version
+    attributes:
+      label: Current correct version
+      placeholder: e.g. v0.6.3 (released YYYY-MM-DD)
+    validations:
+      required: false
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs, screenshots, links, anything that supports your disclosure. We will reproduce before publishing a correction.
+    validations:
+      required: true
+
+  - type: textarea
+    id: requested_action
+    attributes:
+      label: Requested action
+      description: What would you like us to do? (Re-run with new pin, footnote, retract a claim, opt out, etc.)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: embargo_consent
+    attributes:
+      label: Coordination
+      options:
+        - label: I understand the 7-day embargo protocol from `RESEARCH_DESIGN.md` §11 and consent to coordinated disclosure timing
+          required: true
+        - label: I have read `design/SERVER_POOL.md` and `design/ADVERSARIAL_AUDIT.md`
+          required: false
+        - label: I understand that an immutable v1 row stays on the leaderboard even after a v2 re-run lands (per `RESEARCH_DESIGN.md` §11 item 7)
+          required: false

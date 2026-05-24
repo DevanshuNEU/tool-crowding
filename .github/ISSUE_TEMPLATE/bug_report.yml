@@ -1,0 +1,80 @@
+name: Bug report
+description: A bug in the tcrun harness, oracle, or a design doc that contradicts the code
+labels: ["bug", "needs-triage"]
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Bugs that include the `run_id` and `trial_id` are 10x easier to fix than bugs without them. If you do not have a `run_id`, that is fine; just say so.
+
+  - type: input
+    id: run_id
+    attributes:
+      label: run_id (if applicable)
+      description: From `results/<run_id>/summary.json` or stdout
+      placeholder: e.g. d83a4b2c4f...
+    validations:
+      required: false
+
+  - type: input
+    id: trial_id
+    attributes:
+      label: trial_id (if applicable)
+      placeholder: e.g. 7c1f9e8a3b...
+    validations:
+      required: false
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Python version, OS, harness commit SHA. If you have a run, paste the `env` field from `results/<run_id>/summary.json`.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Smallest input that triggers the bug. If non-deterministic, include the seed and the count of runs out of N you observed the bug.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the full stack trace if applicable.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis (optional)
+      description: What do you think might be going on?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I have checked `harness/SPEC.md` §7 (failure-mode catalog F1-F19) and this is not a documented halt-the-run condition behaving as designed
+          required: false
+        - label: I have re-run `python -m pytest tests/` and the existing tests still pass on my environment
+          required: false
+        - label: This is not a benchmark-gameability concern (which belongs in a maintainer-disclosure issue, not a bug report)
+          required: false
