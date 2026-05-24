@@ -43,7 +43,7 @@ This document is the binding methodology gate. No harness code starts until ever
 >
 > **The narrative pivot.** The original "first to vary N as an IV" framing is no longer defensible. The replacement: tool-crowding closes a specific 6-condition intersection that the prior-art coverage map leaves open, and ships a reproducible harness that other MCP studies can build on. If the 200-trial pilot on 2026-05-23 shows padded-N=1 pass@1 within 5pp of unpadded-N=20 pass@1 on at least 2 of the 3 frontier models, the project pivots from "headline finding" to "methodology porting tool plus per-server MPD diagnostic," and the launch narrative emphasizes the harness over the empirics.
 
-Old (May 20) thesis is preserved in `RESEARCH_DESIGN.md`. The Thu EOD refinement is preserved in the file's git-equivalent history (see `journal/`). The revised statement above supersedes both, and is what goes in the v1 paper abstract, launch post, and Tier-1 DMs.
+Old (May 20) thesis is preserved in `RESEARCH_DESIGN.md`. The revised statement above supersedes it and is what goes in the v1 paper abstract and launch post.
 
 ---
 
@@ -243,55 +243,15 @@ Counted as of 2026-05-22 Fri PM (after the R.12 + R.13 trivial-baselines lock an
 
 ---
 
-## 5. Outreach decision matrix
+## 5. Pre-disclosure protocol
 
-### Tier 1 — Fri 2026-05-22 (post-revision of DM drafts)
+Per-server rankings are reputationally sensitive. The 7-day pre-disclosure embargo per `../RESEARCH_DESIGN.md` §11 applies before any public release: maintainers receive their preliminary MPD, the methodology document, the harness commit SHA, raw per-trial logs for their server, and a factual-correction window. No anonymization. Each server gets a named row with a "limitations" card. Conflict-of-interest disclosure stands across the corresponding-author's affiliation with OCI.
 
-**Anthropic harness + evals team.** Only Tier 1 ships before launch.
-
-| Target | Role | Why first | Status |
-|---|---|---|---|
-| Jeremy Hadfield | Co-author all 3 posts (Nov harness, Jan evals, Mar harness) | Highest cross-post signal | drafts ready; need realness rewrite |
-| David Hershey | Co-author both harness posts | Senior signal | drafts ready |
-| Prithvi Rajasekaran | Lead Mar harness | Labs team, active | drafts ready |
-
-**Honest framing required.** Drafts marked REVISE BEFORE SEND in `design/PRIVATE_DM_DRAFTS.md`. Claim must match Fri state: methodology designed + pilot running, NOT "benchmark built."
-
-### Tier 2 — Sat 2026-05-23 or post-launch Mon
-
-**Microsoft Research tool-space paper authors.** They catalogued the 775 colliding tool names (the IV side). They want someone to measure what they catalogued. Receptive niche.
-
-| Target | Source | Likely receptive |
-|---|---|---|
-| Tool-space-interference authors | https://www.microsoft.com/en-us/research/blog/tool-space-interference-in-the-mcp-era-designing-for-agent-compatibility-at-scale/ | High |
-| Roshanak Zilouchian Moghaddam | SWE-Bench Illusion co-author (Microsoft) | Medium (contamination methodology overlap) |
-
-Send Sat AM with launch artifact OR post-launch Mon with v1 design link.
-
-### Tier 3 — Week 2 (after v1 numbers exist)
-
-**Institutional / sensitive critique audiences.** Need substrate before reaching out.
-
-| Target | Source | Why wait |
-|---|---|---|
-| Jeff Da (Scale AI, SWE-Bench Pro) | jeffrey.da@scale.com | Pro-compatibility pitch needs our methodology + numbers |
-| Salesforce MCP-Universe team (Ziyang Luo, Caiming Xiong, Junnan Li) | salesforce emails on paper | We critique their Section 4.5; needs substantive evidence |
-| Akari Asai (UW, CodeRAG-Bench) | UW page | Academic peer; needs early-signal data |
-
-Send Week 2 with v1 numbers + draft paper.
-
-### Tier 4 — Passive only, never proactive
-
-- MCP-Universe Discord (`discord.gg/t9tU77GF`) — lurk for failure-mode quotes
-- AI Tinkerers Boston Tue 2026-05-26 — in-person opportunity if attended
-
-### Should we wait?
-
-**No, but only Tier 1 ships Fri.** Design alone is not substrate for Tier 2-3. They need numbers. Tier 1 ships because the Anthropic team produced the qualitative claim we are quantifying; we owe them the heads-up before public launch and they have judgment to feed back into the design.
+Maintainer corrections flow through the maintainer-disclosure issue template; immutable v1 rows remain even after v2 re-runs land.
 
 ---
 
-## 6. Open gates before Fri harness build
+## 6. Open gates before harness build
 
 In priority order. Top-to-bottom.
 
@@ -312,4 +272,4 @@ In priority order. Top-to-bottom.
 
 ## 7. Related
 
-[[../notes/abc-best-practices]] [[../notes/mcp-universe]] [[../notes/swe-bench-illusion]] [[../notes/coderag-bench]] [[../notes/swe-bench-pro]] [[ANTHROPIC_HARNESS_LITERATURE]] [[CODERAG_NSWEEP_SCOPE]] [[PRIVATE_DM_DRAFTS]] [[../RESEARCH_DESIGN]] [[../harness/SPEC]] [[../design/SERVER_POOL]] [[../../strategy/week-1/2026-05-21]]
+[[../notes/abc-best-practices]] [[../notes/mcp-universe]] [[../notes/swe-bench-illusion]] [[../notes/coderag-bench]] [[../notes/swe-bench-pro]] [[ANTHROPIC_HARNESS_LITERATURE]] [[CODERAG_NSWEEP_SCOPE]] [[../RESEARCH_DESIGN]] [[../harness/SPEC]] [[SERVER_POOL]]

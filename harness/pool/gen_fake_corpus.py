@@ -9,6 +9,7 @@ Run from anywhere:
 """
 import json, hashlib, random, re, sys, os
 from collections import Counter
+from pathlib import Path
 
 import tiktoken
 ENC = tiktoken.get_encoding("cl100k_base")
@@ -542,7 +543,7 @@ print(f"  91-180 (large): {counts['large']}", file=sys.stderr)
 print(f"  >180:    {over}", file=sys.stderr)
 print(f"  min/max: {min(toks_only)}/{max(toks_only)}", file=sys.stderr)
 
-OUT = "/Users/devanshu/Desktop/DevVault/tool-crowding/design/fake_tool_corpus.jsonl"
+OUT = str(Path(__file__).resolve().parents[2] / "design" / "fake_tool_corpus.jsonl")
 with open(OUT, "w") as f:
     for e in final:
         e2 = {k:v for k,v in e.items() if not k.startswith("_")}
@@ -571,5 +572,5 @@ stats = {
     "seed": SEED,
     "band_target_counts_by_author": dict(Counter(e["_band"] for e in final)),
 }
-with open("/Users/devanshu/Desktop/DevVault/tool-crowding/harness/pool/_fake_corpus_stats.json","w") as f:
+with open(str(Path(__file__).resolve().parent / "_fake_corpus_stats.json"),"w") as f:
     json.dump(stats, f, indent=2)

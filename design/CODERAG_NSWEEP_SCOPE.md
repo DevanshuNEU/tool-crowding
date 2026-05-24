@@ -74,4 +74,4 @@ We already extracted what matters: methodology gaps (no agent loop, no descripti
 
 ## Related
 
-[[../notes/coderag-bench]] [[../RESEARCH_DESIGN]] [[ANTHROPIC_HARNESS_LITERATURE]] [[../../strategy/week-1/2026-05-21]]
+[[../notes/coderag-bench]] [[../RESEARCH_DESIGN]] [[ANTHROPIC_HARNESS_LITERATURE]]

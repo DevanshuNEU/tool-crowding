@@ -135,4 +135,4 @@ This is a **second figure for the paper**, not the headline figure. Worth Sectio
 
 ## Related
 
-[[abc-best-practices]] [[mcp-universe]] [[coderag-bench]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../design/SERVER_POOL]] [[../../strategy/week-1/2026-05-21]]
+[[abc-best-practices]] [[mcp-universe]] [[coderag-bench]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../design/SERVER_POOL]]

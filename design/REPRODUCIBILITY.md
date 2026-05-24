@@ -222,4 +222,4 @@ This doc deliberately does NOT cover contamination, COI, statistical analysis, o
 
 ## Related
 
-[[FOUNDATION]] [[../RESEARCH_DESIGN]] [[SERVER_POOL]] [[../harness/SPEC]] [[QUERY_SET_HYGIENE]] [[PILOT_V0]] [[PRE_REGISTRATION]] [[PRIVATE_DM_DRAFTS]] [[../notes/abc-best-practices]] [[../notes/swe-bench-pro]] [[../notes/swe-bench-illusion]] [[../notes/ragmcp-100]]
+[[FOUNDATION]] [[../RESEARCH_DESIGN]] [[SERVER_POOL]] [[../harness/SPEC]] [[QUERY_SET_HYGIENE]] [[PILOT_V0]] [[PRE_REGISTRATION]] [[../notes/abc-best-practices]] [[../notes/swe-bench-pro]] [[../notes/swe-bench-illusion]] [[../notes/ragmcp-100]]

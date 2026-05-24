@@ -11,27 +11,37 @@ canonical_source: ~/.claude/plans/no-so-create-a-dreamy-pillow.md (origin); this
 
 ## Context
 
-The 5-week strategy sprint (May 20 to June 22, 2026) is signal-building for a SWE / AI-engineer job by September. Day 1 plan to spec `mcp-bench` was killed mid-day after deep validation surfaced that (a) `mcp-bench` is taken by Accenture (arXiv 2508.20453, 484 stars, NeurIPS 2025), (b) at least 5 serious model-axis MCP benchmarks already exist (Scale MCP-Atlas, MCP-Universe, MCPMark, MCPAgentBench, MCP-Bench), and (c) Digital Applied published a 100-server stress test in April 2026.
+Day 1 plan to spec `mcp-bench` was killed mid-day after deep validation surfaced that (a) `mcp-bench` is taken by Accenture (arXiv 2508.20453, 484 stars, NeurIPS 2025), (b) at least 5 serious model-axis MCP benchmarks already exist (Scale MCP-Atlas, MCP-Universe, MCPMark, MCPAgentBench, MCP-Bench), and (c) Digital Applied published a 100-server stress test in April 2026.
 
-The user requested a NeurIPS-reviewer-defensible research-design package before any harness code is written. This document is that package.
+This document is a NeurIPS-reviewer-defensible research-design package written before any harness code, capturing the binding methodology, the falsification conditions, and the four pre-registered scenario abstracts.
 
 **Scope of this document:** the 11 required design sections plus a built-in adversarial self-critique (Reviewer-2 Attack). Nothing else.
 
-## Vault folder layout
+## Repository layout
 
 ```
-DevVault/tool-crowding/
-├── RESEARCH_DESIGN.md        ← this file (vault-living copy)
-├── CLAUDE.md                 ← project-local agent operating manual
-├── notes/                    ← paper reading notes (Wed 2026-05-21 task)
-├── design/
-│   ├── METHODOLOGY.md        ← public methodology doc, pre-published before results (TBD)
-│   ├── PRE_REGISTRATION.md   ← committed before any trial runs (TBD Thu 2026-05-22)
-│   └── SERVER_POOL.md        ← per-server install + reachability + version pinning
-├── harness/                  ← code; eventually mirrored to github.com/DevanshuNEU/tool-crowding
-├── data/                     ← per-trial logs, results.json
-├── figures/                  ← N-curves, Pareto plot
-└── paper/                    ← arXiv preprint + workshop submission drafts
+tool-crowding/
+├── RESEARCH_DESIGN.md        # this file (canonical 11-section design)
+├── CLAUDE.md                 # project operating manual
+├── notes/                    # 11 paper-reading deep notes
+├── research/                 # 5 landscape audits
+├── design/                   # 10 binding methodology docs + fake-tool corpus
+│   ├── FOUNDATION.md
+│   ├── PRE_REGISTRATION.md
+│   ├── PADDING_STRATEGY.md
+│   ├── QUERY_SET_HYGIENE.md
+│   ├── REPRODUCIBILITY.md
+│   ├── SERVER_POOL.md
+│   ├── MODEL_VERSIONS.md
+│   ├── ADVERSARIAL_AUDIT.md
+│   ├── CHART_LAYOUT.md
+│   ├── PILOT_V0.md
+│   └── fake_tool_corpus.jsonl
+└── harness/                  # tcrun Python package + tests
+    ├── SPEC.md
+    ├── tcrun/
+    ├── tests/
+    └── pyproject.toml
 ```
 
 ## Quantitative-claim corrections (Phase 1 verification results)
@@ -576,8 +586,7 @@ Execution checklist for the implementation phase:
 
 ## Related
 
-- [[../strategy/week-1/2026-05-20]] — pivot record
-- [[../strategy/week-1/2026-05-21]] — Wed reading day
-- [[../strategy/personas.md]] — 4 mentor voices
 - [[CLAUDE]] — project operating manual
+- [[design/FOUNDATION]] — binding methodology + construct
+- [[design/PRE_REGISTRATION]] — four scenario abstracts locked before data
 - [[design/SERVER_POOL]] — per-server install + reachability

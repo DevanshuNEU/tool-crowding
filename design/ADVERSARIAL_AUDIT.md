@@ -2,7 +2,7 @@
 title: tool-crowding Adversarial Audit
 date_locked: 2026-05-23 (Sat AM, pre-pilot)
 status: forward-defensive; v1 mitigation status per attack
-companion: SYSTEM_DESIGN.md §1.1 Gap 2; RESEARCH_DESIGN.md §6 Threats to Validity
+companion: RESEARCH_DESIGN.md §6 Threats to Validity
 purpose: anticipate optimization pressure from MCP server maintainers and characterize benchmark survivability
 ---
 
@@ -67,7 +67,7 @@ Six attack vectors. For each: plausibility, detection signal in our data, v1 mit
 
 **Detection.** `servers_pinned.yaml` SHAs are content-hashed into `run_id` (TC.1, satisfied by `design/REPRODUCIBILITY.md §1`). Any pinned-version change derives a new `run_id` and a new leaderboard row; the original v1 row stays (per RESEARCH_DESIGN.md §11 item 7). A divergence between pinned-SHA and the latest published SHA on the server's repo is surfaced as a "version-age days" column on the leaderboard.
 
-**Rejection criterion.** Servers with pinned-SHA >90 days behind their public latest at re-run time are reported with a "version-age >90d" footnote and a stale-version flag. Quarterly re-run policy (Gap 6 in SYSTEM_DESIGN.md §1.2) forces a refresh.
+**Rejection criterion.** Servers with pinned-SHA >90 days behind their public latest at re-run time are reported with a "version-age >90d" footnote and a stale-version flag. Quarterly re-run policy forces a refresh.
 
 **v1 mitigation.** SAT-D: SHA pinning in `servers_pinned.yaml`; content-hashed into `run_id`.
 **v1.1 mitigation.** Automated GitHub-API check for latest SHA at every analysis run; emit version-age column to leaderboard JSON. Manual for v1.0.
@@ -125,4 +125,4 @@ The benchmark survives this audit at v1.0. A1 keyword stuffing is the highest-re
 
 ## Related
 
-[[FOUNDATION]] [[PRE_REGISTRATION]] [[../RESEARCH_DESIGN]] [[../SYSTEM_DESIGN]] [[REPRODUCIBILITY]] [[SERVER_POOL]] [[CHART_LAYOUT]]
+[[FOUNDATION]] [[PRE_REGISTRATION]] [[../RESEARCH_DESIGN]] [[REPRODUCIBILITY]] [[SERVER_POOL]] [[CHART_LAYOUT]]

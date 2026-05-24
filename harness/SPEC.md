@@ -700,7 +700,7 @@ Five signals during implementation that mean "stop, you are building the wrong t
 - `[[../RESEARCH_DESIGN]]` — the locked research design (this spec implements it)
 - `[[../CLAUDE]]` — project operating manual and kill criteria
 - `[[../design/SERVER_POOL]]` — the 15-server pool spec (pinning table feeds `tcrun/servers_pinned.yaml`)
-- `[[../../strategy/week-1/2026-05-22]]` — Thu daily file (harness build day 1)
+- `[[../design/REPRODUCIBILITY]]` — 7-artifact identity chain consumed by the harness
 
 ---
 
@@ -708,7 +708,7 @@ Five signals during implementation that mean "stop, you are building the wrong t
 
 ### v1.2 — 2026-05-22 (Fri AM, harness build day 1)
 
-Two amendments per yesterday's handoff (`strategy/week-1/2026-05-22.md` Fri PM task list, FOUNDATION.md §6 item 2).
+Two amendments to the v1.1 spec, locked Fri AM of harness build day 1 (per FOUNDATION.md §6 item 2).
 
 - **Item (a) applied — `run_id` extension to artifact content chain.** Section 8 Identity rule rewritten. Previous v1.0 derivation (`SHA-256(canonical_config_json)`) hashed Config paths but missed mutations to the files at those paths (servers_pinned.yaml, queries.jsonl, pass_v1.py, etc.), creating a silent-corruption hole: a YAML edit could change server SHAs while leaving `run_id` unchanged. v1.2 derivation augments the canonical Config by replacing every path-typed field with `{"path": ..., "sha256": file_sha256(path)}` before hashing. The 7-artifact chain in `design/REPRODUCIBILITY.md §1` is the binding source; the SPEC's Identity rule implements it from the Config side. M1 + M5 + Section 5 rule 2 updated to reference REPRODUCIBILITY.md and to add the v1.2 path-typed fields (`descriptions`, `endpoints`, `environment`, `harness_version`, `padding_corpus`).
 

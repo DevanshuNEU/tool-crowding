@@ -163,4 +163,4 @@ Cost: if their indexes are downloadable, probably <$1K to run on top 3 generator
 
 ## Related
 
-[[abc-best-practices]] [[mcp-universe]] [[swe-bench-illusion]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../design/SERVER_POOL]] [[../harness/SPEC]] [[../../strategy/week-1/2026-05-21]]
+[[abc-best-practices]] [[mcp-universe]] [[swe-bench-illusion]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../design/SERVER_POOL]] [[../harness/SPEC]]

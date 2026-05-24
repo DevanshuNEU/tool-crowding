@@ -66,4 +66,4 @@ Not a must-cite. Optional citation in the methodology section if we use any LLM-
 
 ## Related
 
-[[mcp-universe]] [[../RESEARCH_DESIGN]] [[../../strategy/week-1/2026-05-21]]
+[[mcp-universe]] [[../RESEARCH_DESIGN]]

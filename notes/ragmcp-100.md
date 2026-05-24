@@ -184,4 +184,4 @@ Action item 6 in the original note ("Pull PDF locally and verify '11100' number 
 
 ## Related
 
-[[abc-best-practices]] [[mcp-universe]] [[swe-bench-illusion]] [[coderag-bench]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../CLAUDE]] [[../../strategy/week-1/2026-05-21]]
+[[abc-best-practices]] [[mcp-universe]] [[swe-bench-illusion]] [[coderag-bench]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../CLAUDE]]

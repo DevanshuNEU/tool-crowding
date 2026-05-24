@@ -83,4 +83,4 @@ Skim was sufficient. No need to deep-read.
 
 ## Related
 
-[[coderag-bench]] [[abc-best-practices]] [[mcp-universe]] [[swe-bench-illusion]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../design/SERVER_POOL]] [[../../strategy/week-1/2026-05-21]]
+[[coderag-bench]] [[abc-best-practices]] [[mcp-universe]] [[swe-bench-illusion]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../design/SERVER_POOL]]

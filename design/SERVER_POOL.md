@@ -115,4 +115,4 @@ Fill via a one-off harness script that connects to each server, dumps tool schem
 
 - `[[../RESEARCH_DESIGN]]` — full design context (Section 3 server pool)
 - `[[../CLAUDE]]` — project operating manual
-- `[[../../strategy/week-1/2026-05-22]]` — Thu daily file (harness build day)
+- `[[REPRODUCIBILITY]]` — 7-artifact identity chain that consumes the pinning table

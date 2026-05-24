@@ -173,4 +173,4 @@ Backup: David Hershey for senior-signal reach; Prithvi Rajasekaran for Labs/MCP-
 
 ## Related
 
-[[CODERAG_NSWEEP_SCOPE]] [[../notes/abc-best-practices]] [[../notes/mcp-universe]] [[../notes/swe-bench-illusion]] [[../notes/coderag-bench]] [[../RESEARCH_DESIGN]] [[../../strategy/week-1/2026-05-21]]
+[[CODERAG_NSWEEP_SCOPE]] [[../notes/abc-best-practices]] [[../notes/mcp-universe]] [[../notes/swe-bench-illusion]] [[../notes/coderag-bench]] [[../RESEARCH_DESIGN]]

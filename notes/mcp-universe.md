@@ -145,4 +145,4 @@ Action item: Thu morning, scan `mcpuniverse/benchmark/configs/repo_management/` 
 
 ## Related
 
-[[abc-best-practices]] [[swe-bench-illusion]] [[coderag-bench]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../harness/SPEC]] [[../design/SERVER_POOL]] [[../../strategy/week-1/2026-05-21]]
+[[abc-best-practices]] [[swe-bench-illusion]] [[coderag-bench]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../harness/SPEC]] [[../design/SERVER_POOL]]

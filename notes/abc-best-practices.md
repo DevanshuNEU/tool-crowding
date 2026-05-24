@@ -63,4 +63,4 @@ This is what v1.2 SPEC item (a) is already addressing for `run_id`. Worth a shor
 
 ## Related
 
-[[mcp-universe]] [[swe-bench-illusion]] [[coderag-bench]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../harness/SPEC]] [[../../strategy/week-1/2026-05-21]]
+[[mcp-universe]] [[swe-bench-illusion]] [[coderag-bench]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../harness/SPEC]]

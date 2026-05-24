@@ -172,4 +172,4 @@ The alternative (purely original methodology) is more defensible against "you ju
 
 ## Related
 
-[[abc-best-practices]] [[mcp-universe]] [[swe-bench-illusion]] [[coderag-bench]] [[../RESEARCH_DESIGN]] [[../design/SERVER_POOL]] [[../design/ANTHROPIC_HARNESS_LITERATURE]] [[../../strategy/week-1/2026-05-21]]
+[[abc-best-practices]] [[mcp-universe]] [[swe-bench-illusion]] [[coderag-bench]] [[../RESEARCH_DESIGN]] [[../design/SERVER_POOL]] [[../design/ANTHROPIC_HARNESS_LITERATURE]]

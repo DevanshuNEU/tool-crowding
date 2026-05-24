@@ -2,7 +2,7 @@
 title: tool-crowding Launch-Day Killer Chart — Layout Spec
 date_locked: 2026-05-23 (Sat AM, pre-pilot)
 status: design spec; fixture-driven; populates from real data post-pilot
-companion: SYSTEM_DESIGN.md §1.1 Gap 4; RESEARCH_DESIGN.md §3 + §4 + §5
+companion: RESEARCH_DESIGN.md §3 + §4 + §5
 purpose: THE chart that travels on Twitter, LinkedIn, HN, arXiv abstract figure
 ---
 
@@ -203,4 +203,4 @@ if __name__ == "__main__":
 
 ## Related
 
-[[FOUNDATION]] [[PRE_REGISTRATION]] [[../RESEARCH_DESIGN]] [[../SYSTEM_DESIGN]] [[ADVERSARIAL_AUDIT]] [[SERVER_POOL]]
+[[FOUNDATION]] [[PRE_REGISTRATION]] [[../RESEARCH_DESIGN]] [[ADVERSARIAL_AUDIT]] [[SERVER_POOL]]

@@ -116,4 +116,4 @@ LiveMCPBench is the strongest piece of concurrent evidence we have, and it clean
 
 ## Related
 
-[[abc-best-practices]] [[mcp-universe]] [[swe-bench-illusion]] [[coderag-bench]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../harness/SPEC]] [[../design/SERVER_POOL]] [[../../strategy/week-1/2026-05-21]]
+[[abc-best-practices]] [[mcp-universe]] [[swe-bench-illusion]] [[coderag-bench]] [[swe-bench-pro]] [[../RESEARCH_DESIGN]] [[../harness/SPEC]] [[../design/SERVER_POOL]]
