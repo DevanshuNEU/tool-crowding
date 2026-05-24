@@ -37,14 +37,6 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-[project.urls]
-Homepage = "https://github.com/DevanshuNEU/tool-crowding"
-Documentation = "https://github.com/DevanshuNEU/tool-crowding/blob/main/RESEARCH_DESIGN.md"
-Repository = "https://github.com/DevanshuNEU/tool-crowding"
-Issues = "https://github.com/DevanshuNEU/tool-crowding/issues"
-Changelog = "https://github.com/DevanshuNEU/tool-crowding/blob/main/CHANGELOG.md"
-"Pre-registration" = "https://github.com/DevanshuNEU/tool-crowding/blob/main/design/PRE_REGISTRATION.md"
-
 dependencies = [
     "anthropic>=0.40",
     "typer>=0.12",
@@ -74,6 +66,14 @@ dev = [
 
 [project.scripts]
 tcrun = "tcrun.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/DevanshuNEU/tool-crowding"
+Documentation = "https://github.com/DevanshuNEU/tool-crowding/blob/main/RESEARCH_DESIGN.md"
+Repository = "https://github.com/DevanshuNEU/tool-crowding"
+Issues = "https://github.com/DevanshuNEU/tool-crowding/issues"
+Changelog = "https://github.com/DevanshuNEU/tool-crowding/blob/main/CHANGELOG.md"
+"Pre-registration" = "https://github.com/DevanshuNEU/tool-crowding/blob/main/design/PRE_REGISTRATION.md"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

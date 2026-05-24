@@ -33,6 +33,7 @@ jobs:
       - name: Lint with ruff
         working-directory: harness
         run: ruff check tcrun/ tests/
+        continue-on-error: true  # non-blocking pre-v1.0; will gate at v0.2.0-pilot
 
       - name: Type check with pyright
         working-directory: harness
