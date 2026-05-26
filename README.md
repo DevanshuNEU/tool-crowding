@@ -1,4 +1,4 @@
-# tool-crowding
+# tool-crowding test
 
 > A pre-registered, open-methodology benchmark for measuring discrimination interference among concurrently-installed MCP servers on code retrieval.
 
@@ -32,13 +32,13 @@ When you install 10 to 20 Model Context Protocol servers simultaneously (the rea
 
 **Pre-pilot as of 2026-05-23.** Methodology locked across 10 binding design docs. 12-module Python harness with 116 passing pytest cases. 199-entry fake-tool corpus. Five hand-curated oracle smoke tests (5/5 pass). Pre-registered predictions and four scenario abstracts committed before the pilot runs.
 
-| Milestone | Date | State |
-|---|---|---|
-| Methodology locked | 2026-05-20 to 2026-05-22 | done |
-| Harness + corpus + tests | 2026-05-23 | done |
-| Query set + 50-trial calibration | 2026-05-24 | pending |
-| 144-trial pre-registered pilot | 2026-05-26 | pending |
-| Public launch + arXiv preprint draft | 2026-05-27 | pending |
+| Milestone                            | Date                     | State   |
+| ------------------------------------ | ------------------------ | ------- |
+| Methodology locked                   | 2026-05-20 to 2026-05-22 | done    |
+| Harness + corpus + tests             | 2026-05-23               | done    |
+| Query set + 50-trial calibration     | 2026-05-24               | pending |
+| 144-trial pre-registered pilot       | 2026-05-26               | pending |
+| Public launch + arXiv preprint draft | 2026-05-27               | pending |
 
 This README will be updated with verified numbers after the pilot lands. We do not over-claim.
 
@@ -90,12 +90,12 @@ Engineering spec lives at [`harness/SPEC.md`](harness/SPEC.md). It includes a pr
 
 Predictions are locked in [`design/PRE_REGISTRATION.md`](design/PRE_REGISTRATION.md) before the pilot runs. Four scenario abstracts cover the outcome space with explicit priors:
 
-| Scenario | Prior | One-line claim |
-|---|---|---|
-| Clean win | 15% | Both frontier models show ≥5pp degradation; padded-N=1 leaves ≥5pp residual; MPD stable; description-similarity correlates |
-| Methodology contribution | 35% | Padded-N=1 accounts for most of the gap; contribution narrows to methodology port + per-server diagnostic |
-| Frontier robust | 25% | Both frontier models show <5pp degradation; per-server MPD becomes the lasting contribution |
-| Mixed by model class | 25% | Sonnet 4.6 inverted-U; GPT-5-class monotonic; deployment recommendations model-conditional |
+| Scenario                 | Prior | One-line claim                                                                                                             |
+| ------------------------ | ----- | -------------------------------------------------------------------------------------------------------------------------- |
+| Clean win                | 15%   | Both frontier models show ≥5pp degradation; padded-N=1 leaves ≥5pp residual; MPD stable; description-similarity correlates |
+| Methodology contribution | 35%   | Padded-N=1 accounts for most of the gap; contribution narrows to methodology port + per-server diagnostic                  |
+| Frontier robust          | 25%   | Both frontier models show <5pp degradation; per-server MPD becomes the lasting contribution                                |
+| Mixed by model class     | 25%   | Sonnet 4.6 inverted-U; GPT-5-class monotonic; deployment recommendations model-conditional                                 |
 
 Decision rules per scenario are locked. **No post-hoc rationalization.** Kill criteria are documented at [`design/FOUNDATION.md`](design/FOUNDATION.md) §3 and reviewed weekly. If any fires, the project pivots or shelves cleanly.
 
@@ -134,7 +134,7 @@ This work extends, rather than originates, multi-tool interference measurement. 
 - **Anthropic Tool Search Tool** (Nov 2025) for the closed-eval anchor showing production impact (Opus 4 49→74%, Opus 4.5 79.5→88.1%)
 - **GitHub Copilot's 40-to-13 tools reduction** (Nov 2025) for the cleanest public production-engineering precedent (+2-5pp on SWE-Lancer + SWE-bench-Verified, -400ms TTFT)
 
-Community qualitative observations on multi-MCP interference (Simon Willison's *Too many MCPs*, Anthropic's *Code Execution with MCP* engineering blog, Block's Linear MCP restructure, Cursor's 40-tool cap) anchored the project's motivation.
+Community qualitative observations on multi-MCP interference (Simon Willison's _Too many MCPs_, Anthropic's _Code Execution with MCP_ engineering blog, Block's Linear MCP restructure, Cursor's 40-tool cap) anchored the project's motivation.
 
 ## Citation
 
@@ -162,4 +162,4 @@ Apache 2.0. See [LICENSE](LICENSE).
 
 ---
 
-*Pre-pilot status. Verified numbers and the headline chart land 2026-05-27.*
+_Pre-pilot status. Verified numbers and the headline chart land 2026-05-27._
