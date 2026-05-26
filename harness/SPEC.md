@@ -480,6 +480,11 @@ Other subcommands:
 - `tcrun resume <run_id>` — pick up from last completed cell
 - `tcrun status <run_id>` — report per-cell completion
 - `tcrun verify <run_id>` — re-run 5 random trials and check schema + determinism
+- `tcrun runid --config CFG` — compute the run_id without executing
+- `tcrun reproduce <trial_id>` — single-trial replay (REPRODUCIBILITY.md §4.1)
+- `tcrun validate --config CFG` — 8-gate preflight without dispatching trials
+- `tcrun snapshot-env [--out PATH]` — write `environment.lock` (OS + Python + sorted pip freeze + docker SHAs). Deterministic: re-running on unchanged env produces byte-identical output.
+- `tcrun snapshot-descriptions --config CFG (--server NAME | --all)` — snapshot MCP tool definitions into `pool/descriptions.json`. Incremental per-server mode keeps the rest of the file untouched; `--all` tolerates per-server failures.
 
 ### YAML config equivalent (`configs/mve.yaml`)
 

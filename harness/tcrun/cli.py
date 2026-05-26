@@ -25,6 +25,14 @@ from tcrun.config import compute_run_id, load_config
 from tcrun.orchestrator import Orchestrator
 from tcrun.preflight import PreflightError, PreflightGate
 from tcrun.results import read_jsonl
+from tcrun.runner import make_default_agent_factory, make_default_pool_factory
+from tcrun.servers import load_pinned_servers
+from tcrun.snapshot import (
+    snapshot_all_descriptions,
+    snapshot_server_descriptions,
+    update_descriptions_file,
+    write_env_lock,
+)
 from tcrun.tasks import load_tasks
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -63,7 +71,12 @@ def run(
     except Exception as e:
         typer.echo(f"task load failed: {e}", err=True)
         raise typer.Exit(code=2)
-    orchestrator = Orchestrator(cfg, queries=queries)
+    orchestrator = Orchestrator(
+        cfg,
+        queries=queries,
+        pool_factory=make_default_pool_factory(cfg),
+        agent_factory=make_default_agent_factory(cfg),
+    )
     summary = asyncio.run(orchestrator.run())
     typer.echo(json.dumps(summary, indent=2))
 
@@ -81,7 +94,13 @@ def resume(run_id: str = typer.Argument(..., help="run_id to resume")) -> None:
         raise typer.Exit(code=2)
     cfg = load_config(cfg_path)
     queries = load_tasks(cfg.task_set)
-    orchestrator = Orchestrator(cfg, run_dir=run_dir, queries=queries)
+    orchestrator = Orchestrator(
+        cfg,
+        run_dir=run_dir,
+        queries=queries,
+        pool_factory=make_default_pool_factory(cfg),
+        agent_factory=make_default_agent_factory(cfg),
+    )
     summary = asyncio.run(orchestrator.run())
     typer.echo(json.dumps(summary, indent=2))
 
@@ -189,6 +208,105 @@ def validate(
             indent=2,
         )
     )
+
+
+@app.command(name="snapshot-env")
+def snapshot_env_cmd(
+    out: Path = typer.Option(Path("environment.lock"), "--out", "-o", help="env.lock output path"),
+    servers_pinned: Path = typer.Option(
+        Path("tcrun/servers_pinned.yaml"),
+        "--servers-pinned",
+        help="servers_pinned.yaml for docker digest capture (omit to skip docker)",
+    ),
+) -> None:
+    """Write environment.lock (OS + Python + sorted pip freeze + docker SHAs).
+
+    Re-run when Python deps or docker images change. Output is deterministic
+    given identical environment state (no timestamps) so re-snapshotting on
+    an unchanged box produces byte-identical content and a stable run_id.
+    """
+    yaml_arg = servers_pinned if servers_pinned.exists() else None
+    payload = write_env_lock(out, servers_yaml_path=yaml_arg)
+    typer.echo(
+        json.dumps(
+            {
+                "out": str(out),
+                "python_version": payload["python_version"],
+                "pip_freeze_count": len(payload.get("pip_freeze", [])),
+                "docker_images_count": len(payload.get("docker_images", {})),
+            },
+            indent=2,
+        )
+    )
+
+
+@app.command(name="snapshot-descriptions")
+def snapshot_descriptions_cmd(
+    config: Path = typer.Option(..., "--config", "-c", help="YAML config path"),
+    server: str = typer.Option(
+        "",
+        "--server",
+        help="Snapshot one named server (incremental); empty + --all for everyone",
+    ),
+    all_servers: bool = typer.Option(
+        False, "--all", help="Snapshot every server in servers_pinned.yaml"
+    ),
+    out: Path = typer.Option(
+        Path("pool/descriptions.json"),
+        "--out",
+        "-o",
+        help="descriptions.json output path",
+    ),
+    timeout: float = typer.Option(30.0, "--timeout", help="Per-server timeout (s)"),
+) -> None:
+    """Snapshot one (or all) MCP server(s) tool definitions into descriptions.json.
+
+    Single-server mode is incremental: it merges one entry into the existing
+    file, leaving every other server's entry untouched. The --all mode
+    tolerates per-server failures (logged, returned in the summary, exit
+    code 1 if anything failed) so a single un-runnable server doesn't block
+    the rest of the snapshot.
+    """
+    cfg = load_config(config)
+    if not server and not all_servers:
+        typer.echo("must pass --server NAME or --all", err=True)
+        raise typer.Exit(code=2)
+    if server and all_servers:
+        typer.echo("--server and --all are mutually exclusive", err=True)
+        raise typer.Exit(code=2)
+    if server:
+        pins = load_pinned_servers(cfg.servers_pinned)
+        if server not in pins:
+            typer.echo(
+                f"unknown server {server!r}; known: {sorted(pins)}", err=True
+            )
+            raise typer.Exit(code=2)
+        entry = asyncio.run(
+            snapshot_server_descriptions(pins[server], timeout_s=timeout)
+        )
+        update_descriptions_file(out, server, entry)
+        typer.echo(
+            json.dumps(
+                {"server": server, "tools_count": len(entry["tools"]), "out": str(out)},
+                indent=2,
+            )
+        )
+        return
+    final, failures = asyncio.run(
+        snapshot_all_descriptions(cfg.servers_pinned, out, timeout_s=timeout)
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "out": str(out),
+                "servers_count": len(final.get("servers", {})),
+                "failures": [{"server": n, "reason": r} for n, r in failures],
+            },
+            indent=2,
+        )
+    )
+    if failures:
+        raise typer.Exit(code=1)
 
 
 def _load_env() -> None:

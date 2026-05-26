@@ -4,6 +4,36 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Added — install-time artifact generators: `tcrun snapshot-env` + `tcrun snapshot-descriptions` (2026-05-26)
+
+- `tcrun/snapshot.py`: deterministic generators for the two install-time artifacts that participate in `run_id` via `Config.PATH_FIELDS` (per `design/REPRODUCIBILITY.md §1`):
+  - `write_env_lock(out, *, servers_yaml_path=None)` writes `environment.lock` with `{schema_version, os, python_version, harness_git_sha, pip_freeze[], docker_images{}}`. No `captured_at` field on purpose — re-running on an unchanged environment produces byte-identical output and keeps `run_id` stable. Docker digests are captured via `docker image inspect`; absent/un-pulled images are logged + omitted rather than halting (the lock file is bootstrap, not a runtime gate).
+  - `snapshot_server_descriptions(pin)` opens a fresh MCP session (its own `AsyncExitStack` over `stdio_client` + `ClientSession`), calls `list_tools`, returns `{server_name, install, pin, tools[{name, description, inputSchema}]}` with tools sorted alphabetically. Doesn't reuse `ServerPoolManager._spawn_one` because that consumes the `list_tools` result for smoke verification and discards the tool definitions we need.
+  - `update_descriptions_file(out, server_name, entry)` is the incremental merge primitive — load existing JSON (or fresh skeleton), upsert one server, sort servers alphabetically, atomic-write via tmp+rename. Lets `--server NAME` mode bootstrap `pool/descriptions.json` one server at a time.
+  - `snapshot_all_descriptions(servers_yaml, out)` iterates `servers_pinned.yaml` with per-server graceful failure; returns `(final_descriptions, [(server, reason)])` so a single un-runnable server doesn't block the rest of the snapshot.
+- `cli.py`: two new subcommands.
+  - `tcrun snapshot-env [--out environment.lock] [--servers-pinned PATH]` — one-shot library install command. Re-run when Python deps or docker images change.
+  - `tcrun snapshot-descriptions --config CFG (--server NAME | --all) [--out pool/descriptions.json] [--timeout SECONDS]` — `--server`/`--all` are mutually exclusive; missing both raises. `--all` exits non-zero if any server failed but still writes the partial file.
+- `SPEC.md §8` CLI command listing extended to include the new `snapshot-*` subcommands plus the previously-undocumented `runid`/`reproduce`/`validate`.
+- 27 new tests in `tests/test_snapshot.py` (library: env.lock determinism + docker capture happy/absent/sorted, tool serialization tolerance, pin identity ordering, single-server snapshot happy/empty/timeout/spawn-error, descriptions file create/merge/overwrite/atomic/corrupt-recovery, snapshot-all happy + partial failure; CLI: snapshot-env smoke, mutually-exclusive arg validation, single-server dispatch via patched `snapshot_server_descriptions`).
+
+### Added — default Orchestrator factories: `tcrun run` dispatches trials end-to-end (2026-05-26)
+
+- `tcrun/runner.py`: new wiring module sitting between `Orchestrator` and `AgentHarness`. Two factory builders + a thin bridge class:
+  - `make_default_pool_factory(config)` returns the orchestrator's `pool_factory` callable: `(server_names) -> AsyncContextManager[dict[str, ServerSession]]`. One hermetic `ServerPoolManager` per group per SPEC.md §5 rule 4.
+  - `make_default_agent_factory(config, *, env=None, anthropic_client=None, embedder=None, harness_version=None)` returns a closure satisfying the orchestrator's contract `(pool_sessions, embedder_spec) -> AgentRunner`. Run-scoped resources (endpoint pin, oracle SHA, env fingerprint, embedder client, harness version) are resolved once at factory-build time; never re-resolved per trial.
+  - `AgentRunner` is the bridge: converts the orchestrator's `(cell, query)` call shape into a `TrialInputs` and delegates to `AgentHarness.run_trial`. Stateless beyond construction.
+- `cli.py::run` and `cli.py::resume` now wire both default factories into the `Orchestrator`. `tcrun run --config configs/mve.yaml` dispatches trials end-to-end (previously bailed at first group with no factories).
+- Loud-failure guarantees baked in:
+  - `endpoints.json` missing the `cfg.model` row → `EndpointResolutionError` at factory-build time, not at first dispatch.
+  - `tool_listing_strategy: retriever-on` with no buildable embedder (missing `OPENAI_API_KEY`, missing SDK extra) → raises at factory-build time, not at first trial.
+  - `Query.difficulty_quartile` outside `{q1, q2, q3, q4}` → raises (no silent fallback to "medium").
+- 17 new tests in `tests/test_runner.py` covering: endpoint resolution (happy + 3 failure modes), difficulty mapping, oracle version format, `AgentRunner` `TrialInputs` assembly, retriever-on embedder pre-build (happy + propagated failure), retriever-off embedder skip, pool-factory dict yield, end-to-end orchestrator dispatch with mocked harness, and the new orchestrator loud-fail.
+
+### Changed
+
+- `Orchestrator._run_group` no longer silently returns when `pool_factory` or `agent_factory` is `None`. It now raises `OrchestratorHalt` with a pointer to `tcrun.runner`. Production misconfigurations fail loudly instead of letting `tcrun run` exit "successfully" with zero trials. Enumeration / checkpoint tests are unaffected (they exercise the constructor without calling `.run()`).
+
 ### Added — embedder layer + retriever-ON code path (2026-05-25)
 
 - `tcrun/embedder.py`: provider-agnostic `Embedder` Protocol + 3 provider classes (`OpenAIEmbedder`, `VoyageEmbedder`, `BGEM3Embedder`) with lazy SDK imports so the OpenAI-only install does not pull PyTorch. Factory `make_embedder(spec)` accepts pin dict or path; pin's `model`/`dimension`/`snapshot` drive runtime behavior (pin is the single source of truth, not just run_id metadata).
@@ -36,7 +66,6 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 - arXiv preprint draft in a separate paper repo
 - GitHub MCP Docker image digest pinned in `servers_pinned.yaml` (digest captured 2026-05-25; pinning pending)
 - BGE-M3 safetensors SHA-256 implementation (pin currently has `TBD-` placeholder; preflight gate blocks BGE trials until real hash lands)
-- Orchestrator default agent_factory connecting AgentHarness end-to-end (currently factories are test-only; CLI `tcrun run` bails without dispatch)
 - External-party reproducibility receipt for one fixture trial
 
 ## [0.1.0-pre-pilot] - 2026-05-23

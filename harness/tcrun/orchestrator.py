@@ -319,9 +319,19 @@ class Orchestrator:
     ) -> None:
         """Open one hermetic ServerPoolManager for the group, then dispatch."""
         if self._pool_factory is None or self._agent_factory is None:
-            # Without injected factories we cannot dispatch real trials; this
-            # path is exercised by the enumeration / checkpoint tests.
-            return
+            # Loud failure on purpose: silently returning here lets `tcrun run`
+            # exit "successfully" with zero trials, hiding the misconfiguration.
+            # Production callers must inject both factories (see
+            # `tcrun.runner.make_default_pool_factory` and
+            # `make_default_agent_factory`). Enumeration / checkpoint tests
+            # only exercise the orchestrator constructor and avoid `.run()`,
+            # so they are not affected.
+            raise OrchestratorHalt(
+                "Orchestrator.run() called without pool_factory and/or "
+                "agent_factory; production callers must inject both "
+                "(see tcrun.runner.make_default_pool_factory and "
+                "make_default_agent_factory)."
+            )
         server_names = self._server_names_for_group(cells[0])
         async with self._pool_factory(server_names) as pool:
             # Contract: agent_factory(pool, embedder_spec). The 2-arg signature
