@@ -4,6 +4,12 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Fixed — `.env` now overrides shell-exported credentials, with a loud warning on drift (2026-05-26)
+
+- `tcrun/cli.py::_load_env` previously called `load_dotenv(dotenv_path=env_path)` with `override=False` (python-dotenv's default). A stale `export ANTHROPIC_API_KEY=...` line in the user's shell rc (`~/.zshrc`, `~/.bashrc`) would silently shadow the value in `.env` — every subprocess inherits the shell env, dotenv refuses to overwrite, and Anthropic returns 401 against a key the dashboard swears is live. Surfaced 2026-05-26: a freshly-rotated key in `harness/.env` produced 401s for 30 minutes of debugging because `~/.zshrc:11` exported a long-revoked key into every shell. The harness's reproducibility chain depends on `.env` being the source of truth for credentials — silent shell-leak means two machines with different `.zshrc` files would produce different `run_id`s for the same checked-in config.
+- Fix: `_load_env` now calls `load_dotenv(..., override=True)` so `.env` wins. Before the override, it reads the file values via `dotenv_values` and compares to `os.environ`; any key whose shell value differs from the `.env` value triggers a stderr WARNING naming the key (with the last 4 chars of each, never the full secret) + a one-line remediation hint ("Remove the stale export from your shell rc"). This keeps the surprise loud rather than silent.
+- 2 new tests in `tests/test_cli.py`: `test_load_env_dot_env_overrides_shell_export` (stale shell key + fresh .env → .env wins, WARNING in stderr) + `test_load_env_no_warning_when_shell_matches_dotenv` (matching values → no spurious warning).
+
 ### Fixed — agent.py re-raises F13 exceptions instead of swallowing into `error_type="harness_bug"` (2026-05-26)
 
 - `tcrun/agent.py::AgentHarness.run_trial` caught every non-(CacheLeakHalt, APIFault, ServerFault, TimeoutError) exception in the agent loop, set `error_type = "harness_bug"`, built a Trial row with `cost_usd=0` + `tool_calls=[]`, and returned it. The comment on line 288 promised "will halt"; the code didn't deliver. Same pattern at the oracle-call site (line 297-299) caught oracle exceptions into `error_type = "harness_bug"` instead of propagating.

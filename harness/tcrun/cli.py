@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import random
+import sys
 from pathlib import Path
 
 import typer
@@ -316,13 +318,33 @@ def _load_env() -> None:
     from outside `harness/` (e.g. parent dir, or via absolute path from
     elsewhere) still pick up the .env. Scoped to the CLI entry so test
     imports stay env-isolated (tests drive os.environ explicitly).
+
+    override=True is deliberate: .env is the source of truth for tcrun
+    credentials. A stale `export ANTHROPIC_API_KEY=...` in the user's shell
+    rc would otherwise shadow the .env value, every subprocess inherits the
+    stale shell key, and Anthropic returns 401 against a key the dashboard
+    swears is live (2026-05-26 smoke wasted a session diagnosing exactly
+    this). If the override discards a shell value, log a warning naming the
+    key so the surprise is loud, not silent.
     """
     try:
-        from dotenv import load_dotenv  # base dep per pyproject.toml
+        from dotenv import dotenv_values, load_dotenv  # base dep per pyproject.toml
     except ImportError:
         return  # graceful no-op if dotenv missing (e.g., partial install)
     env_path = Path(__file__).parents[1] / ".env"
-    load_dotenv(dotenv_path=env_path)
+    if not env_path.exists():
+        return
+    file_values = dotenv_values(env_path)
+    for k, file_v in file_values.items():
+        shell_v = os.environ.get(k)
+        if shell_v is not None and file_v is not None and shell_v != file_v:
+            print(
+                f"[load_dotenv] WARNING: {k} in shell env != .env; .env wins "
+                f"(shell ended ...{shell_v[-4:]}, .env ends ...{file_v[-4:]}). "
+                f"Remove the stale export from your shell rc to silence this.",
+                file=sys.stderr,
+            )
+    load_dotenv(dotenv_path=env_path, override=True)
 
 
 def main() -> int:

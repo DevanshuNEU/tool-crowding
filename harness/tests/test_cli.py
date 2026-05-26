@@ -255,3 +255,57 @@ def test_help_lists_subcommands():
     assert result.exit_code == 0
     for cmd in ["run", "resume", "status", "verify", "runid", "reproduce", "validate"]:
         assert cmd in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# _load_env: .env beats shell env (override=True).
+# Surfaced 2026-05-26: a stale `export ANTHROPIC_API_KEY=...` in ~/.zshrc
+# silently shadowed a freshly-rotated .env key for ~30 minutes of debugging.
+# ---------------------------------------------------------------------------
+
+
+def test_load_env_dot_env_overrides_shell_export(tmp_path: Path, monkeypatch, capsys):
+    import os
+    from unittest.mock import patch
+    from tcrun.cli import _load_env
+
+    # Simulate a stale shell export: shell env has the OLD key.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-stale-shell-export")
+
+    # And the harness .env has the NEW key.
+    fake_env = tmp_path / ".env"
+    fake_env.write_text("ANTHROPIC_API_KEY=sk-ant-fresh-from-dotenv\n", encoding="utf-8")
+
+    # _load_env anchors to Path(__file__).parents[1] / ".env" — patch the
+    # cli module's __file__ so it resolves to the fixture path's parent.
+    fake_cli_file = tmp_path / "tcrun" / "cli.py"
+    fake_cli_file.parent.mkdir(parents=True, exist_ok=True)
+    fake_cli_file.write_text("", encoding="utf-8")
+
+    with patch("tcrun.cli.__file__", str(fake_cli_file)):
+        _load_env()
+
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-fresh-from-dotenv"
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.err
+    assert "ANTHROPIC_API_KEY" in captured.err
+
+
+def test_load_env_no_warning_when_shell_matches_dotenv(tmp_path: Path, monkeypatch, capsys):
+    import os
+    from unittest.mock import patch
+    from tcrun.cli import _load_env
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-same-value")
+    fake_env = tmp_path / ".env"
+    fake_env.write_text("ANTHROPIC_API_KEY=sk-ant-same-value\n", encoding="utf-8")
+    fake_cli_file = tmp_path / "tcrun" / "cli.py"
+    fake_cli_file.parent.mkdir(parents=True, exist_ok=True)
+    fake_cli_file.write_text("", encoding="utf-8")
+
+    with patch("tcrun.cli.__file__", str(fake_cli_file)):
+        _load_env()
+
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-same-value"
+    captured = capsys.readouterr()
+    assert "WARNING" not in captured.err
