@@ -1,6 +1,72 @@
 {
   "schema_version": "1.0",
   "servers": {
+    "deepwiki": {
+      "install": "hosted-http",
+      "pin": "sha256:ce939ade8c67f9c34cb3ed36a5cc041e52c5e6ec15bc842dc7a1a38634413355",
+      "server_name": "deepwiki",
+      "tools": [
+        {
+          "description": "Get a list of documentation topics for a GitHub repository.\n\nArgs:\n    repoName: GitHub repository in owner/repo format (e.g. \"facebook/react\")",
+          "inputSchema": {
+            "properties": {
+              "repoName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "repoName"
+            ],
+            "type": "object"
+          },
+          "name": "read_wiki_structure"
+        },
+        {
+          "description": "View documentation about a GitHub repository.\n\nArgs:\n    repoName: GitHub repository in owner/repo format (e.g. \"facebook/react\")",
+          "inputSchema": {
+            "properties": {
+              "repoName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "repoName"
+            ],
+            "type": "object"
+          },
+          "name": "read_wiki_contents"
+        },
+        {
+          "description": "Ask any question about a GitHub repository and get an AI-powered, context-grounded response.\n\nArgs:\n    repoName: GitHub repository or list of repositories (max 10) in owner/repo format\n    question: The question to ask about the repository",
+          "inputSchema": {
+            "properties": {
+              "question": {
+                "type": "string"
+              },
+              "repoName": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "repoName",
+              "question"
+            ],
+            "type": "object"
+          },
+          "name": "ask_question"
+        }
+      ]
+    },
     "fetch_mcp": {
       "install": "docker",
       "pin": "sha256:d9907377c03da91e49cf02c3dd6f0f83d1e0183e1222850f92595089f2c9a59d",

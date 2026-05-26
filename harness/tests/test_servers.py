@@ -14,14 +14,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tcrun.servers import (
+    HOSTED_HTTP_BUNDLE_FILES,
+    HostedHttpParameters,
     PinnedServer,
     ServerInstallError,
     ServerPinMismatch,
     ServerPoolManager,
+    compute_snapshot_sha256,
+    hosted_http_params_for,
     install_server,
     load_pinned_servers,
     stdio_params_for,
     verify_pins,
+    verify_snapshot_integrity,
 )
 
 
@@ -328,3 +333,297 @@ def test_install_server_npm_view_ok_returns_silently():
     fake_completed = MagicMock(returncode=0, stdout="1.0.0", stderr="")
     with patch("tcrun.servers.subprocess.run", return_value=fake_completed):
         install_server(pin)  # no raise
+
+
+def test_install_server_hosted_http_is_noop():
+    """hosted-http has no local install step; install_server returns silently."""
+    pin = PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                       url="https://example.test/mcp", snapshot_path="snap",
+                       snapshot_sha256="sha256:abc")
+    install_server(pin)  # must not raise, must not call subprocess
+
+
+# ---------------------------------------------------------------------------
+# hosted-http: PinnedServer fields + yaml load + verify_pins
+# ---------------------------------------------------------------------------
+
+
+def test_load_pinned_servers_reads_hosted_http_fields(tmp_path: Path):
+    p = _write_yaml(tmp_path, """
+primary_servers:
+  - name: deepwiki
+    description: x
+    install: hosted-http
+    url: https://mcp.deepwiki.com/mcp
+    snapshot_path: server-pool/deepwiki-snapshot-2026-05-26
+    snapshot_sha256: sha256:abc123
+    auth: none
+""")
+    pins = load_pinned_servers(p)
+    assert pins["deepwiki"].install == "hosted-http"
+    assert pins["deepwiki"].url == "https://mcp.deepwiki.com/mcp"
+    assert pins["deepwiki"].snapshot_path == "server-pool/deepwiki-snapshot-2026-05-26"
+    assert pins["deepwiki"].snapshot_sha256 == "sha256:abc123"
+
+
+def test_verify_pins_halts_on_missing_url_for_hosted_http():
+    pins = {"dw": PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                               snapshot_path="snap", snapshot_sha256="sha256:abc")}
+    with pytest.raises(ServerPinMismatch):
+        verify_pins(pins)
+
+
+def test_verify_pins_halts_on_missing_snapshot_sha256_for_hosted_http():
+    pins = {"dw": PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                               url="https://example.test/mcp", snapshot_path="snap")}
+    with pytest.raises(ServerPinMismatch):
+        verify_pins(pins)
+
+
+def test_verify_pins_halts_on_missing_snapshot_path_for_hosted_http():
+    pins = {"dw": PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                               url="https://example.test/mcp", snapshot_sha256="sha256:abc")}
+    with pytest.raises(ServerPinMismatch):
+        verify_pins(pins)
+
+
+def test_verify_pins_accepts_hosted_http_with_url_path_and_sha():
+    pins = {"dw": PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                               url="https://example.test/mcp", snapshot_path="snap",
+                               snapshot_sha256="sha256:abc")}
+    verify_pins(pins)  # no raise
+
+
+# ---------------------------------------------------------------------------
+# hosted_http_params_for
+# ---------------------------------------------------------------------------
+
+
+def test_hosted_http_params_for_returns_url_container():
+    pin = PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                       url="https://example.test/mcp", snapshot_path="snap",
+                       snapshot_sha256="sha256:abc")
+    params = hosted_http_params_for(pin)
+    assert isinstance(params, HostedHttpParameters)
+    assert params.url == "https://example.test/mcp"
+
+
+def test_hosted_http_params_for_rejects_non_hosted_http_pin():
+    pin = PinnedServer(name="x", description="", install="docker", auth="none",
+                       docker_image="mcp/git", image_digest="sha256:abc")
+    with pytest.raises(ServerInstallError):
+        hosted_http_params_for(pin)
+
+
+def test_hosted_http_params_for_raises_on_missing_url():
+    pin = PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                       snapshot_path="snap", snapshot_sha256="sha256:abc")
+    with pytest.raises(ServerInstallError):
+        hosted_http_params_for(pin)
+
+
+def test_stdio_params_for_rejects_hosted_http():
+    pin = PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                       url="https://example.test/mcp")
+    with pytest.raises(ServerInstallError):
+        stdio_params_for(pin)
+
+
+# ---------------------------------------------------------------------------
+# Snapshot integrity (REPRODUCIBILITY.md §5)
+# ---------------------------------------------------------------------------
+
+
+def _write_valid_snapshot(snapshot_dir: Path, payloads: dict[str, str] | None = None) -> str:
+    """Write the full HOSTED_HTTP_BUNDLE_FILES set into snapshot_dir and return
+    its expected sha256 (matches compute_snapshot_sha256's algorithm)."""
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    defaults = {name: "{}\n" for name in HOSTED_HTTP_BUNDLE_FILES}
+    if payloads:
+        defaults.update(payloads)
+    for name, body in defaults.items():
+        (snapshot_dir / name).write_text(body, encoding="utf-8")
+    return compute_snapshot_sha256(snapshot_dir)
+
+
+def test_compute_snapshot_sha256_is_deterministic(tmp_path: Path):
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    sha_a = _write_valid_snapshot(a)
+    sha_b = _write_valid_snapshot(b)
+    assert sha_a == sha_b  # same byte content → same hash
+
+
+def test_compute_snapshot_sha256_changes_when_content_changes(tmp_path: Path):
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    sha_a = _write_valid_snapshot(a)
+    sha_b = _write_valid_snapshot(b, payloads={"initialize.json": '{"changed": true}\n'})
+    assert sha_a != sha_b
+
+
+def test_compute_snapshot_sha256_raises_on_missing_file(tmp_path: Path):
+    snap = tmp_path / "snap"
+    snap.mkdir()
+    # only write 2 of the 4 required files
+    (snap / "initialize.json").write_text("{}\n", encoding="utf-8")
+    (snap / "meta.json").write_text("{}\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError):
+        compute_snapshot_sha256(snap)
+
+
+def test_verify_snapshot_integrity_passes_with_correct_sha(tmp_path: Path):
+    snap = tmp_path / "snap"
+    sha = _write_valid_snapshot(snap)
+    pin = PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                       url="https://example.test/mcp", snapshot_path="snap",
+                       snapshot_sha256=sha)
+    verify_snapshot_integrity(pin, tmp_path)  # no raise
+
+
+def test_verify_snapshot_integrity_raises_on_sha_drift(tmp_path: Path):
+    snap = tmp_path / "snap"
+    _write_valid_snapshot(snap)
+    pin = PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                       url="https://example.test/mcp", snapshot_path="snap",
+                       snapshot_sha256="sha256:wrong")
+    with pytest.raises(ServerPinMismatch, match="snapshot drift"):
+        verify_snapshot_integrity(pin, tmp_path)
+
+
+def test_verify_snapshot_integrity_raises_on_missing_dir(tmp_path: Path):
+    pin = PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                       url="https://example.test/mcp", snapshot_path="does-not-exist",
+                       snapshot_sha256="sha256:abc")
+    with pytest.raises(ServerPinMismatch, match="does not exist"):
+        verify_snapshot_integrity(pin, tmp_path)
+
+
+def test_verify_snapshot_integrity_raises_on_missing_bundle_files(tmp_path: Path):
+    snap = tmp_path / "snap"
+    snap.mkdir()
+    # write only 1 of 4 required files
+    (snap / "initialize.json").write_text("{}\n", encoding="utf-8")
+    pin = PinnedServer(name="dw", description="", install="hosted-http", auth="none",
+                       url="https://example.test/mcp", snapshot_path="snap",
+                       snapshot_sha256="sha256:abc")
+    with pytest.raises(ServerPinMismatch):
+        verify_snapshot_integrity(pin, tmp_path)
+
+
+def test_verify_snapshot_integrity_skips_non_hosted_http():
+    pin = PinnedServer(name="x", description="", install="docker", auth="none",
+                       docker_image="mcp/git", image_digest="sha256:abc")
+    verify_snapshot_integrity(pin, Path("/nonexistent"))  # no raise, returns None
+
+
+# ---------------------------------------------------------------------------
+# ServerPoolManager: hosted-http spawn path (mocked streamablehttp_client)
+# ---------------------------------------------------------------------------
+
+
+def _fake_streamablehttp_client_factory(read_w, write_w, session_id="sess-1"):
+    @asynccontextmanager
+    async def fake_streamablehttp_client(url, **kwargs):
+        def _get_id():
+            return session_id
+        yield (read_w, write_w, _get_id)
+    return fake_streamablehttp_client
+
+
+@pytest.mark.asyncio
+async def test_pool_start_uses_streamablehttp_for_hosted_http(tmp_path: Path):
+    """End-to-end mock: yaml → pool.start → streamablehttp_client called with the URL."""
+    snap = tmp_path / "snap"
+    sha = _write_valid_snapshot(snap)
+    yaml_path = _write_yaml(tmp_path, f"""
+primary_servers:
+  - name: deepwiki
+    description: x
+    install: hosted-http
+    url: https://mcp.deepwiki.com/mcp
+    snapshot_path: snap
+    snapshot_sha256: {sha}
+    auth: none
+""")
+
+    FakeSession = _fake_session_class(["read_wiki_structure", "read_wiki_contents", "ask_question"])
+    called_urls: list[str] = []
+
+    @asynccontextmanager
+    async def recording_streamablehttp_client(url, **kwargs):
+        called_urls.append(url)
+        def _get_id():
+            return "sess-1"
+        yield ("r", "w", _get_id)
+
+    with patch("tcrun.servers.streamablehttp_client", recording_streamablehttp_client), \
+         patch("tcrun.servers.ClientSession", FakeSession):
+        async with ServerPoolManager(yaml_path, harness_root=tmp_path) as pool:
+            sessions = await pool.start(["deepwiki"])
+            assert set(sessions) == {"deepwiki"}
+            assert sorted(sessions["deepwiki"].tool_names) == [
+                "ask_question", "read_wiki_contents", "read_wiki_structure"
+            ]
+    assert called_urls == ["https://mcp.deepwiki.com/mcp"]
+
+
+@pytest.mark.asyncio
+async def test_pool_start_halts_on_snapshot_drift(tmp_path: Path):
+    """If snapshot has drifted, _spawn_one must halt before contacting the server."""
+    snap = tmp_path / "snap"
+    _write_valid_snapshot(snap)
+    yaml_path = _write_yaml(tmp_path, """
+primary_servers:
+  - name: deepwiki
+    description: x
+    install: hosted-http
+    url: https://mcp.deepwiki.com/mcp
+    snapshot_path: snap
+    snapshot_sha256: sha256:definitely-wrong
+    auth: none
+""")
+    FakeSession = _fake_session_class([])
+    called = []
+
+    @asynccontextmanager
+    async def recording_streamablehttp_client(url, **kwargs):
+        called.append(url)
+        def _get_id(): return None
+        yield ("r", "w", _get_id)
+
+    with patch("tcrun.servers.streamablehttp_client", recording_streamablehttp_client), \
+         patch("tcrun.servers.ClientSession", FakeSession):
+        async with ServerPoolManager(yaml_path, harness_root=tmp_path) as pool:
+            with pytest.raises(ServerPinMismatch, match="snapshot drift"):
+                await pool.start(["deepwiki"])
+    assert called == []  # halted before network
+
+
+@pytest.mark.asyncio
+async def test_pool_hosted_http_connect_error_becomes_install_error(tmp_path: Path):
+    """httpx-side errors during connect must surface as ServerInstallError."""
+    snap = tmp_path / "snap"
+    sha = _write_valid_snapshot(snap)
+    yaml_path = _write_yaml(tmp_path, f"""
+primary_servers:
+  - name: deepwiki
+    description: x
+    install: hosted-http
+    url: https://mcp.deepwiki.com/mcp
+    snapshot_path: snap
+    snapshot_sha256: {sha}
+    auth: none
+""")
+
+    @asynccontextmanager
+    async def failing_streamablehttp_client(url, **kwargs):
+        raise ConnectionError("simulated httpx ConnectError")
+        yield  # pragma: no cover (unreachable)
+
+    FakeSession = _fake_session_class([])
+    with patch("tcrun.servers.streamablehttp_client", failing_streamablehttp_client), \
+         patch("tcrun.servers.ClientSession", FakeSession):
+        async with ServerPoolManager(yaml_path, harness_root=tmp_path) as pool:
+            with pytest.raises(ServerInstallError, match="failed to connect"):
+                await pool.start(["deepwiki"])

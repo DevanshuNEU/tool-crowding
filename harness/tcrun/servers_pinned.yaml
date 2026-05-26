@@ -1,9 +1,12 @@
 # tcrun/servers_pinned.yaml
 # Server pinning table — mirror of ../../design/SERVER_POOL.md
 # This file's CONTENTS participate in run_id per ../../design/REPRODUCIBILITY.md §1
-# Last touched: 2026-05-26 (npm-distributed MCP servers migrated to official mcp/* Docker
-# images; github_mcp digest captured; see server-pool-audit-2026-05-26 in vault for the
-# upstream npm 404 evidence + migration rationale).
+# Last touched: 2026-05-26 (deepwiki hosted-http row added with snapshot pin; see
+# server-pool/deepwiki-snapshot-2026-05-26/ for the captured initialize handshake +
+# tools/list + representative-query trace. Previous touch same day migrated npm-
+# distributed MCP servers to official mcp/* Docker images and pinned github_mcp digest;
+# see server-pool-audit-2026-05-26 in vault for upstream npm 404 evidence + migration
+# rationale).
 #
 # install-progress (2026-05-26):
 #   - oci git_sha (cloned from DevanshuNEU/lco-fork at HEAD)
@@ -37,6 +40,18 @@ primary_servers:
     image_digest: sha256:e3816a476a977cfb836e7d221510011436c654d11861db66ecfd826601aba6a4
     pinned_at: 2026-05-26
     auth: PAT
+    reachability: 2
+    domain_overlap: primary
+
+  - name: deepwiki
+    description: DeepWiki MCP — AI-powered documentation Q&A for public GitHub repos (Cognition Labs hosted Streamable HTTP; serverInfo DeepWiki v2.14.3, protocolVersion 2025-11-25 at capture)
+    install: hosted-http
+    url: https://mcp.deepwiki.com/mcp
+    snapshot_path: server-pool/deepwiki-snapshot-2026-05-26
+    snapshot_sha256: sha256:ce939ade8c67f9c34cb3ed36a5cc041e52c5e6ec15bc842dc7a1a38634413355
+    snapshot_captured_at: 2026-05-26
+    pinned_at: 2026-05-26
+    auth: none
     reachability: 2
     domain_overlap: primary
 

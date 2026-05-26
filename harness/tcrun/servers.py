@@ -24,6 +24,7 @@ LOC budget per SPEC.md §11: ~200 LOC.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import subprocess
 from contextlib import AsyncExitStack
@@ -40,15 +41,27 @@ import yaml
 try:
     from mcp import ClientSession, McpError  # type: ignore[import-not-found]
     from mcp.client.stdio import stdio_client  # type: ignore[import-not-found]
+    from mcp.client.streamable_http import streamablehttp_client  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover - mcp pinned in pyproject.toml
     ClientSession = None  # type: ignore[assignment]
     stdio_client = None  # type: ignore[assignment]
+    streamablehttp_client = None  # type: ignore[assignment]
 
     class McpError(Exception):  # type: ignore[no-redef]
         """Placeholder when mcp isn't installed; never raised, exists so
         downstream `except McpError` clauses resolve to a real class."""
 
 logger = logging.getLogger(__name__)
+
+# Hosted-HTTP snapshot bundle file manifest. Mirrors
+# server-pool/_capture_deepwiki_snapshot.py BUNDLE_FILES so the runtime
+# integrity check hashes the same artifacts the capture script did.
+HOSTED_HTTP_BUNDLE_FILES: tuple[str, ...] = (
+    "initialize.json",
+    "meta.json",
+    "sample_query.json",
+    "tools_list.json",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -75,11 +88,12 @@ class ServerPinMismatch(RuntimeError):
 
 @dataclass(frozen=True)
 class PinnedServer:
-    """One row of `servers_pinned.yaml`. Either git_sha OR npm_lock_hash is set."""
+    """One row of `servers_pinned.yaml`. Exactly one pin field is populated
+    per install type (git_sha / npm_lock_hash / image_digest / snapshot_sha256)."""
 
     name: str
     description: str
-    install: str  # "npx" | "self-hosted" | "npx-or-pip" | "docker"
+    install: str  # "npx" | "self-hosted" | "npx-or-pip" | "docker" | "hosted-http"
     auth: str
     package: str | None = None
     repo: str | None = None
@@ -89,6 +103,21 @@ class PinnedServer:
     docker_image: str | None = None
     image_digest: str | None = None
     tarball_sha256: str | None = None
+    url: str | None = None
+    snapshot_path: str | None = None
+    snapshot_sha256: str | None = None
+
+
+@dataclass(frozen=True)
+class HostedHttpParameters:
+    """URL container for hosted-HTTP MCP servers (Streamable HTTP transport).
+
+    Mirrors `mcp.StdioServerParameters` in shape but holds a URL instead of an
+    argv. Returned by `hosted_http_params_for(pin)` and consumed by
+    `_spawn_one` via `streamablehttp_client(url)`.
+    """
+
+    url: str
 
 
 @dataclass
@@ -134,6 +163,9 @@ def load_pinned_servers(yaml_path: Path | str) -> dict[str, PinnedServer]:
                 docker_image=_normalize_pin(row.get("docker_image")),
                 image_digest=_normalize_pin(row.get("image_digest")),
                 tarball_sha256=_normalize_pin(row.get("tarball_sha256")),
+                url=_normalize_pin(row.get("url")),
+                snapshot_path=_normalize_pin(row.get("snapshot_path")),
+                snapshot_sha256=_normalize_pin(row.get("snapshot_sha256")),
             )
             out[ps.name] = ps
     return out
@@ -178,6 +210,11 @@ def verify_pins(servers: dict[str, PinnedServer], allow_unpinned: bool = False) 
                 raise ServerPinMismatch(
                     f"{name}: docker install requires both docker_image and image_digest pins"
                 )
+        elif ps.install == "hosted-http":
+            if not (ps.url and ps.snapshot_sha256 and ps.snapshot_path):
+                raise ServerPinMismatch(
+                    f"{name}: hosted-http install requires url, snapshot_path, and snapshot_sha256 pins"
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +223,11 @@ def verify_pins(servers: dict[str, PinnedServer], allow_unpinned: bool = False) 
 
 
 def stdio_params_for(pin: PinnedServer) -> Any:
-    """Build an `mcp.StdioServerParameters` for the given pin. Imported lazily."""
+    """Build an `mcp.StdioServerParameters` for the given pin. Imported lazily.
+
+    Hosted-HTTP pins route through `hosted_http_params_for` instead and are
+    rejected here.
+    """
     from mcp import StdioServerParameters  # type: ignore[import-not-found]
 
     if pin.install == "npx":
@@ -210,6 +251,67 @@ def stdio_params_for(pin: PinnedServer) -> Any:
     raise ServerInstallError(f"{pin.name}: unsupported install type {pin.install!r}")
 
 
+def hosted_http_params_for(pin: PinnedServer) -> HostedHttpParameters:
+    """Build a `HostedHttpParameters` for a hosted-HTTP pin.
+
+    The yielded URL is consumed by `streamablehttp_client(url)` inside
+    `_spawn_one`. Raises if the pin is not hosted-HTTP or lacks a URL.
+    """
+    if pin.install != "hosted-http":
+        raise ServerInstallError(
+            f"{pin.name}: hosted_http_params_for called on install={pin.install!r}"
+        )
+    if not pin.url:
+        raise ServerInstallError(f"{pin.name}: hosted-http install requires url pin")
+    return HostedHttpParameters(url=pin.url)
+
+
+def compute_snapshot_sha256(snapshot_dir: Path) -> str:
+    """Recompute the snapshot bundle sha256 over HOSTED_HTTP_BUNDLE_FILES.
+
+    Must match server-pool/_capture_deepwiki_snapshot.py::bundle_sha256. Raises
+    `FileNotFoundError` if any required file is missing.
+    """
+    h = hashlib.sha256()
+    for name in HOSTED_HTTP_BUNDLE_FILES:
+        path = snapshot_dir / name
+        if not path.is_file():
+            raise FileNotFoundError(f"snapshot bundle missing required file: {path}")
+        h.update(name.encode("utf-8"))
+        h.update(b"\0")
+        h.update(path.read_bytes())
+    return f"sha256:{h.hexdigest()}"
+
+
+def verify_snapshot_integrity(pin: PinnedServer, harness_root: Path) -> None:
+    """Halt the run if the hosted-HTTP snapshot bundle is missing or drifted.
+
+    REPRODUCIBILITY.md §5: SHA drift halts the run. The snapshot is the
+    evidentiary proof of what the hosted server's tool surface looked like at
+    capture; drift means the server's tools changed underneath us and any
+    cross-run comparison is invalid.
+    """
+    if pin.install != "hosted-http":
+        return
+    if not (pin.snapshot_path and pin.snapshot_sha256):
+        raise ServerPinMismatch(
+            f"{pin.name}: hosted-http pin missing snapshot_path or snapshot_sha256"
+        )
+    snapshot_dir = harness_root / pin.snapshot_path
+    if not snapshot_dir.is_dir():
+        raise ServerPinMismatch(
+            f"{pin.name}: snapshot_path {snapshot_dir} does not exist or is not a directory"
+        )
+    try:
+        actual = compute_snapshot_sha256(snapshot_dir)
+    except FileNotFoundError as e:
+        raise ServerPinMismatch(f"{pin.name}: {e}") from e
+    if actual != pin.snapshot_sha256:
+        raise ServerPinMismatch(
+            f"{pin.name}: snapshot drift — pinned {pin.snapshot_sha256}, computed {actual}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # ServerPoolManager
 # ---------------------------------------------------------------------------
@@ -228,8 +330,13 @@ class ServerPoolManager:
     """
 
     def __init__(self, yaml_path: Path | str, *, allow_unpinned: bool = False,
-                 smoke_timeout_s: float = 30.0):
+                 smoke_timeout_s: float = 30.0, harness_root: Path | str | None = None):
         self.yaml_path = Path(yaml_path)
+        # harness_root is the base for resolving snapshot_path on hosted-http
+        # pins. Defaults to yaml_path.parent.parent (convention:
+        # harness/tcrun/servers_pinned.yaml → harness/ is the root). Tests pass
+        # tmp_path explicitly.
+        self.harness_root = Path(harness_root) if harness_root else self.yaml_path.parent.parent
         self.allow_unpinned = allow_unpinned
         self.smoke_timeout_s = smoke_timeout_s
         self.pins: dict[str, PinnedServer] = {}
@@ -263,17 +370,45 @@ class ServerPoolManager:
     async def _spawn_one(self, name: str, pin: PinnedServer) -> ServerSession:
         """Launch one server + initialize the ClientSession + smoke-test.
 
-        Uses module-level `stdio_client` and `ClientSession` so tests can
-        `patch("tcrun.servers.stdio_client", ...)` without going through the
-        real `mcp` package.
+        Bifurcates by install type: stdio-class installs (npx, self-hosted,
+        docker, etc.) use `stdio_client`; hosted-http installs use
+        `streamablehttp_client` and gate on `verify_snapshot_integrity` first.
+
+        Uses module-level `stdio_client` / `streamablehttp_client` /
+        `ClientSession` so tests can `patch("tcrun.servers.<name>", ...)`
+        without going through the real `mcp` package.
         """
-        if stdio_client is None or ClientSession is None:  # pragma: no cover - covered by patches
+        if ClientSession is None:  # pragma: no cover - covered by patches
             raise ServerInstallError("mcp package not installed; cannot spawn servers")
-        params = stdio_params_for(pin)
-        try:
-            read_w, write_w = await self._stack.enter_async_context(stdio_client(params))
-        except OSError as e:
-            raise ServerInstallError(f"{name}: failed to spawn subprocess: {e}") from e
+        if pin.install == "hosted-http":
+            if streamablehttp_client is None:  # pragma: no cover - covered by patches
+                raise ServerInstallError(
+                    "mcp.client.streamable_http not installed; cannot spawn hosted-http servers"
+                )
+            verify_snapshot_integrity(pin, self.harness_root)
+            http_params = hosted_http_params_for(pin)
+            try:
+                # streamablehttp_client yields a 3-tuple: (read, write, get_session_id).
+                # The session-id callback is unused by ClientSession itself but exposed
+                # for future resumption logic.
+                read_w, write_w, _get_session_id = await self._stack.enter_async_context(
+                    streamablehttp_client(http_params.url)
+                )
+            except Exception as e:
+                # httpx may raise ConnectError, TimeoutException, etc.; surface
+                # them all as install errors so the orchestrator can mark the
+                # cell as F1-failed per SPEC.md §7.
+                raise ServerInstallError(
+                    f"{name}: failed to connect to hosted-http server at {http_params.url}: {e}"
+                ) from e
+        else:
+            if stdio_client is None:  # pragma: no cover - covered by patches
+                raise ServerInstallError("mcp package not installed; cannot spawn servers")
+            params = stdio_params_for(pin)
+            try:
+                read_w, write_w = await self._stack.enter_async_context(stdio_client(params))
+            except OSError as e:
+                raise ServerInstallError(f"{name}: failed to spawn subprocess: {e}") from e
         session = await self._stack.enter_async_context(ClientSession(read_w, write_w))
         try:
             await asyncio.wait_for(session.initialize(), timeout=self.smoke_timeout_s)
@@ -299,14 +434,19 @@ class ServerPoolManager:
 
 
 def install_server(pin: PinnedServer, timeout_s: float = 120.0) -> None:
-    """Best-effort pre-install (F1 detection). Synchronous; called before a sweep."""
+    """Best-effort pre-install (F1 detection). Synchronous; called before a sweep.
+
+    docker installs are covered by digest pin (no preflight needed).
+    hosted-http installs are remote services with no local install step; the
+    snapshot integrity check at spawn-time is the equivalent gate.
+    """
     if pin.install == "npx" and pin.package:
         version = f"@{pin.npm_version}" if pin.npm_version else ""
         cmd = ["npm", "view", f"{pin.package}{version}", "version"]
     elif pin.install in ("self-hosted", "npx-or-pip"):
         cmd = ["python", "-c", f"import importlib; importlib.import_module('{pin.name}')"]
     else:
-        return  # docker: covered by digest pin
+        return  # docker / hosted-http: no local install step
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, check=False)
     except (FileNotFoundError, subprocess.SubprocessError) as e:
