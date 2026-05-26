@@ -4,6 +4,16 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Fixed — `snapshot_server_descriptions` error classification (2026-05-26)
+
+- `tcrun/snapshot.py::snapshot_server_descriptions` only caught `asyncio.TimeoutError` + `OSError` at the spawn site. When the MCP subprocess spawned successfully but died during `initialize()` (today's real-world git_mcp 404: npx exits non-zero → MCP client surfaces `McpError("Connection closed")` wrapped in `ExceptionGroup` from its anyio task group), the group escaped as an unhandled 9KB traceback instead of a clean `SnapshotError` — and `snapshot_all_descriptions`'s graceful-per-server-failure contract silently dropped because the bare `except Exception` it relies on doesn't match `ExceptionGroup`.
+- Two new helpers in `snapshot.py`:
+  - `_first_leaf_exception(eg)` walks a (possibly nested) `BaseExceptionGroup` and returns a representative leaf, preferring non-cancellation leaves (anyio cancels sibling tasks when one raises the real failure, so the cancellation is downstream noise).
+  - `_await_classified(coro, *, pin_name, stage, timeout_s=None)` is the single classification chokepoint — catches `TimeoutError`, `McpError`, `OSError`, `BaseExceptionGroup`, and generic `Exception`, wraps each into `SnapshotError(f"{pin}: {stage}: ...")` with `raise from` preserving the original cause, and re-raises `asyncio.CancelledError` unchanged so structured-concurrency teardown still works.
+- `snapshot_server_descriptions` now classifies all four await sites (`stdio_client` spawn, `ClientSession` open, `initialize`, `list_tools`) through the helper. Stage names — "failed to spawn subprocess", "MCP session open", "MCP initialize", "MCP list_tools" — appear verbatim in the SnapshotError message so the failure mode is identifiable from logs alone.
+- `tcrun/servers.py` now also re-exports `McpError` from `mcp` (with a placeholder `class McpError(Exception)` in the mcp-not-installed branch so `except McpError` always resolves to a real class).
+- 9 new tests in `tests/test_snapshot.py`: 3 direct tests of `_first_leaf_exception` (nested-group walk, prefer-real-over-cancellation, all-cancellation fallback), and 6 snapshot-level tests covering McpError-during-initialize, McpError-during-list_tools, ExceptionGroup-wrapping-McpError (the actual today's failure mode), generic-Exception-during-list_tools fallback, CancelledError propagation, and cancel-only-group propagation.
+
 ### Fixed — `_pip_freeze` bound to running interpreter (2026-05-26)
 
 - `tcrun/env.py::_pip_freeze` invoked `pip freeze` via `$PATH`, which resolves to whichever `pip` happens to be first on the shell's PATH (homebrew/system) instead of the venv that's actually running `tcrun`. Same root cause poisoned both call sites: `EnvFingerprint.package_hash` (hashed into every `Trial.env`) and `environment.lock.pip_freeze` (content-hashed into `run_id` via `Config.PATH_FIELDS`). Surfaced when the first real `tcrun snapshot-env` invocation captured a 33-package homebrew env instead of the venv's 59-package tcrun environment. Now `[sys.executable, "-m", "pip", "freeze"]`, so the captured deps always belong to the interpreter that's running. Regression test in `tests/test_env.py` asserts the subprocess argv starts with `sys.executable`.

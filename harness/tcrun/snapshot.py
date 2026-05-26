@@ -44,6 +44,7 @@ import yaml
 from tcrun.env import _git_sha, _pip_freeze
 from tcrun.servers import (
     ClientSession,
+    McpError,
     PinnedServer,
     load_pinned_servers,
     stdio_client,
@@ -221,6 +222,72 @@ def _pin_identity(pin: PinnedServer) -> str:
     )
 
 
+def _first_leaf_exception(eg: BaseExceptionGroup) -> BaseException:
+    """Walk a (possibly nested) ExceptionGroup; return a representative leaf.
+
+    Prefers non-cancellation leaves because anyio cancels sibling tasks when
+    one of them raises the actual failure — without this preference the
+    SnapshotError message would name CancelledError rather than the real cause
+    (e.g. the McpError that triggered the cancellation).
+    """
+    leaves: list[BaseException] = []
+
+    def _walk(group: BaseExceptionGroup) -> None:
+        for exc in group.exceptions:
+            if isinstance(exc, BaseExceptionGroup):
+                _walk(exc)
+            else:
+                leaves.append(exc)
+
+    _walk(eg)
+    for leaf in leaves:
+        if not isinstance(leaf, asyncio.CancelledError):
+            return leaf
+    return leaves[0] if leaves else eg
+
+
+async def _await_classified(
+    coro: Any,
+    *,
+    pin_name: str,
+    stage: str,
+    timeout_s: float | None = None,
+) -> Any:
+    """Await `coro` (optionally with timeout); classify failures as `SnapshotError`.
+
+    Every non-cancellation failure becomes `SnapshotError(f"{pin}: {stage}: ...")`
+    with `raise from` preserving the original cause. ExceptionGroups raised by
+    the MCP client's anyio task group are unwrapped to their leaf cause so the
+    reason field that `snapshot_all_descriptions` logs is human-readable.
+    Cancellations propagate unchanged.
+    """
+    try:
+        if timeout_s is None:
+            return await coro
+        return await asyncio.wait_for(coro, timeout=timeout_s)
+    except asyncio.CancelledError:
+        raise
+    except (asyncio.TimeoutError, TimeoutError) as e:
+        raise SnapshotError(
+            f"{pin_name}: {stage} (timed out after {timeout_s}s)"
+        ) from e
+    except McpError as e:
+        raise SnapshotError(f"{pin_name}: {stage}: McpError: {e}") from e
+    except OSError as e:
+        raise SnapshotError(f"{pin_name}: {stage}: {e}") from e
+    except BaseExceptionGroup as eg:
+        inner = _first_leaf_exception(eg)
+        if isinstance(inner, asyncio.CancelledError):
+            raise
+        raise SnapshotError(
+            f"{pin_name}: {stage}: {type(inner).__name__}: {inner}"
+        ) from inner
+    except Exception as e:
+        raise SnapshotError(
+            f"{pin_name}: {stage}: {type(e).__name__}: {e}"
+        ) from e
+
+
 async def snapshot_server_descriptions(
     pin: PinnedServer,
     *,
@@ -228,9 +295,13 @@ async def snapshot_server_descriptions(
 ) -> dict[str, Any]:
     """Open a fresh MCP session, list_tools, return a descriptions entry.
 
-    Caller handles `SnapshotError`. The session is fully torn down before
-    returning (AsyncExitStack closes the ClientSession + the stdio subprocess
-    transport in reverse-construction order).
+    Every failure is classified into `SnapshotError` with a stage-prefixed
+    message (`failed to spawn subprocess` / `MCP session open` / `MCP initialize`
+    / `MCP list_tools`). The MCP client wraps subprocess-died-during-handshake
+    failures as `McpError` inside an `ExceptionGroup` from its anyio task group;
+    `_await_classified` unwraps to the leaf cause and chains it via `raise from`
+    so the cause survives in tracebacks while `snapshot_all_descriptions` gets
+    a human-readable reason string. Cancellations propagate unchanged.
     """
     if stdio_client is None or ClientSession is None:
         raise SnapshotError(
@@ -238,16 +309,28 @@ async def snapshot_server_descriptions(
         )
     params = stdio_params_for(pin)
     async with AsyncExitStack() as stack:
-        try:
-            read_w, write_w = await stack.enter_async_context(stdio_client(params))
-        except OSError as e:
-            raise SnapshotError(f"{pin.name}: failed to spawn subprocess: {e}") from e
-        session = await stack.enter_async_context(ClientSession(read_w, write_w))
-        try:
-            await asyncio.wait_for(session.initialize(), timeout=timeout_s)
-            result = await asyncio.wait_for(session.list_tools(), timeout=timeout_s)
-        except (asyncio.TimeoutError, TimeoutError) as e:
-            raise SnapshotError(f"{pin.name}: list_tools timed out") from e
+        read_w, write_w = await _await_classified(
+            stack.enter_async_context(stdio_client(params)),
+            pin_name=pin.name,
+            stage="failed to spawn subprocess",
+        )
+        session = await _await_classified(
+            stack.enter_async_context(ClientSession(read_w, write_w)),
+            pin_name=pin.name,
+            stage="MCP session open",
+        )
+        await _await_classified(
+            session.initialize(),
+            pin_name=pin.name,
+            stage="MCP initialize",
+            timeout_s=timeout_s,
+        )
+        result = await _await_classified(
+            session.list_tools(),
+            pin_name=pin.name,
+            stage="MCP list_tools",
+            timeout_s=timeout_s,
+        )
         tools = [_serialize_tool(t) for t in (getattr(result, "tools", None) or [])]
         tools.sort(key=lambda t: t["name"])
         return {

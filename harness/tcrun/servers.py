@@ -38,11 +38,15 @@ import yaml
 # stdio_params_for() still re-imports `StdioServerParameters` lazily because some
 # unit tests construct PinnedServer rows without `mcp` installed at all.
 try:
-    from mcp import ClientSession  # type: ignore[import-not-found]
+    from mcp import ClientSession, McpError  # type: ignore[import-not-found]
     from mcp.client.stdio import stdio_client  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover - mcp pinned in pyproject.toml
     ClientSession = None  # type: ignore[assignment]
     stdio_client = None  # type: ignore[assignment]
+
+    class McpError(Exception):  # type: ignore[no-redef]
+        """Placeholder when mcp isn't installed; never raised, exists so
+        downstream `except McpError` clauses resolve to a real class."""
 
 logger = logging.getLogger(__name__)
 

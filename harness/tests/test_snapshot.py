@@ -14,12 +14,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mcp import McpError
+from mcp.types import ErrorData
+
 from tcrun.servers import PinnedServer
 from tcrun.snapshot import (
     DESCRIPTIONS_SCHEMA_VERSION,
     ENV_LOCK_SCHEMA_VERSION,
     SnapshotError,
     _capture_docker_digests,
+    _first_leaf_exception,
     _pin_identity,
     _serialize_tool,
     snapshot_all_descriptions,
@@ -27,6 +31,10 @@ from tcrun.snapshot import (
     update_descriptions_file,
     write_env_lock,
 )
+
+
+def _mcp_err(message: str = "Connection closed", code: int = -32000) -> McpError:
+    return McpError(ErrorData(code=code, message=message))
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +300,138 @@ def test_snapshot_server_descriptions_raises_on_spawn_oserror():
 
     with patch("tcrun.snapshot.stdio_client", _RaisingStdio):
         with pytest.raises(SnapshotError, match="failed to spawn subprocess"):
+            asyncio.run(snapshot_server_descriptions(_fake_pin()))
+
+
+# ---------------------------------------------------------------------------
+# Hardened error classification (McpError, ExceptionGroup, generic, cancel)
+# ---------------------------------------------------------------------------
+
+
+def test_first_leaf_exception_walks_nested_groups():
+    inner_err = RuntimeError("real cause")
+    nested = ExceptionGroup("outer", [ExceptionGroup("inner", [inner_err])])
+    assert _first_leaf_exception(nested) is inner_err
+
+
+def test_first_leaf_exception_prefers_real_over_cancellation():
+    cancel = asyncio.CancelledError()
+    real = _mcp_err("the actual failure")
+    # asyncio.CancelledError is a BaseException, so any group containing it
+    # must be a BaseExceptionGroup. This mirrors what anyio actually raises
+    # when a task group cancels siblings after a real error fires.
+    grp = BaseExceptionGroup("mixed", [cancel, real])
+    assert _first_leaf_exception(grp) is real
+
+
+def test_first_leaf_exception_returns_cancel_when_only_cancellations():
+    grp = BaseExceptionGroup("cancels", [asyncio.CancelledError(), asyncio.CancelledError()])
+    assert isinstance(_first_leaf_exception(grp), asyncio.CancelledError)
+
+
+def test_snapshot_classifies_mcp_error_during_initialize():
+    err = _mcp_err("server closed during initialize")
+
+    class _FakeSession:
+        async def initialize(self):
+            raise err
+
+        async def list_tools(self):
+            return SimpleNamespace(tools=[])
+
+    with patch("tcrun.snapshot.stdio_client", _FakeStdioCtx), patch(
+        "tcrun.snapshot.ClientSession", _make_client_session(_FakeSession())
+    ):
+        with pytest.raises(SnapshotError, match="MCP initialize.*server closed") as exc_info:
+            asyncio.run(snapshot_server_descriptions(_fake_pin()))
+    # raise-from chain preserves the real cause for debugging
+    assert exc_info.value.__cause__ is err
+
+
+def test_snapshot_classifies_mcp_error_during_list_tools():
+    err = _mcp_err("tools handler crashed")
+
+    class _FakeSession:
+        async def initialize(self):
+            return None
+
+        async def list_tools(self):
+            raise err
+
+    with patch("tcrun.snapshot.stdio_client", _FakeStdioCtx), patch(
+        "tcrun.snapshot.ClientSession", _make_client_session(_FakeSession())
+    ):
+        with pytest.raises(SnapshotError, match="MCP list_tools.*tools handler crashed"):
+            asyncio.run(snapshot_server_descriptions(_fake_pin()))
+
+
+def test_snapshot_unwraps_exception_group_around_mcp_error():
+    # Today's real-world failure mode (git_mcp 404): subprocess spawns OK,
+    # MCP client's anyio TaskGroup sees the subprocess die during initialize
+    # and surfaces ExceptionGroup containing McpError("Connection closed").
+    inner = _mcp_err("Connection closed")
+
+    class _FakeSession:
+        async def initialize(self):
+            raise ExceptionGroup("unhandled errors in a TaskGroup", [inner])
+
+        async def list_tools(self):
+            return SimpleNamespace(tools=[])
+
+    with patch("tcrun.snapshot.stdio_client", _FakeStdioCtx), patch(
+        "tcrun.snapshot.ClientSession", _make_client_session(_FakeSession())
+    ):
+        with pytest.raises(SnapshotError, match="MCP initialize.*Connection closed") as exc_info:
+            asyncio.run(snapshot_server_descriptions(_fake_pin()))
+    # The cause chain points at the unwrapped leaf, not the wrapping group.
+    assert exc_info.value.__cause__ is inner
+
+
+def test_snapshot_wraps_generic_exception_in_list_tools():
+    class _FakeSession:
+        async def initialize(self):
+            return None
+
+        async def list_tools(self):
+            raise ValueError("malformed tool definition")
+
+    with patch("tcrun.snapshot.stdio_client", _FakeStdioCtx), patch(
+        "tcrun.snapshot.ClientSession", _make_client_session(_FakeSession())
+    ):
+        with pytest.raises(SnapshotError, match="MCP list_tools.*ValueError.*malformed"):
+            asyncio.run(snapshot_server_descriptions(_fake_pin()))
+
+
+def test_snapshot_does_not_swallow_cancellation():
+    class _FakeSession:
+        async def initialize(self):
+            raise asyncio.CancelledError()
+
+        async def list_tools(self):
+            return SimpleNamespace(tools=[])
+
+    with patch("tcrun.snapshot.stdio_client", _FakeStdioCtx), patch(
+        "tcrun.snapshot.ClientSession", _make_client_session(_FakeSession())
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            asyncio.run(snapshot_server_descriptions(_fake_pin()))
+
+
+def test_snapshot_does_not_swallow_cancel_only_group():
+    class _FakeSession:
+        async def initialize(self):
+            raise BaseExceptionGroup(
+                "cancel storm",
+                [asyncio.CancelledError(), asyncio.CancelledError()],
+            )
+
+        async def list_tools(self):
+            return SimpleNamespace(tools=[])
+
+    with patch("tcrun.snapshot.stdio_client", _FakeStdioCtx), patch(
+        "tcrun.snapshot.ClientSession", _make_client_session(_FakeSession())
+    ):
+        with pytest.raises((asyncio.CancelledError, BaseExceptionGroup)):
             asyncio.run(snapshot_server_descriptions(_fake_pin()))
 
 
