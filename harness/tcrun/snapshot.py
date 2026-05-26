@@ -215,7 +215,7 @@ def _pin_identity(pin: PinnedServer) -> str:
     return (
         pin.git_sha
         or pin.npm_lock_hash
-        or pin.docker_digest
+        or pin.image_digest
         or pin.npm_version
         or pin.tarball_sha256
         or "unpinned"

@@ -97,6 +97,42 @@ def test_verify_pins_allow_unpinned_skips_check():
     verify_pins(pins, allow_unpinned=True)  # no raise
 
 
+def test_verify_pins_halts_on_missing_docker_image():
+    pins = {"x": PinnedServer(name="x", description="", install="docker", auth="none",
+                              image_digest="sha256:abc")}
+    with pytest.raises(ServerPinMismatch):
+        verify_pins(pins)
+
+
+def test_verify_pins_halts_on_missing_image_digest():
+    pins = {"x": PinnedServer(name="x", description="", install="docker", auth="none",
+                              docker_image="mcp/git")}
+    with pytest.raises(ServerPinMismatch):
+        verify_pins(pins)
+
+
+def test_verify_pins_accepts_docker_with_both_image_and_digest():
+    pins = {"x": PinnedServer(name="x", description="", install="docker", auth="none",
+                              docker_image="mcp/git", image_digest="sha256:abc")}
+    verify_pins(pins)  # no raise
+
+
+def test_load_pinned_servers_reads_docker_fields(tmp_path: Path):
+    p = _write_yaml(tmp_path, """
+primary_servers:
+  - name: github_mcp
+    description: x
+    install: docker
+    docker_image: ghcr.io/github/github-mcp-server
+    docker_tag: latest
+    image_digest: sha256:deadbeef
+    auth: PAT
+""")
+    pins = load_pinned_servers(p)
+    assert pins["github_mcp"].docker_image == "ghcr.io/github/github-mcp-server"
+    assert pins["github_mcp"].image_digest == "sha256:deadbeef"
+
+
 # ---------------------------------------------------------------------------
 # stdio params builder
 # ---------------------------------------------------------------------------
@@ -119,6 +155,22 @@ def test_stdio_params_for_self_hosted_uses_name_as_command():
 
 def test_stdio_params_for_unsupported_install_raises():
     pin = PinnedServer(name="x", description="", install="curl", auth="none")
+    with pytest.raises(ServerInstallError):
+        stdio_params_for(pin)
+
+
+def test_stdio_params_for_docker_builds_digest_pinned_ref():
+    pin = PinnedServer(name="git_mcp", description="", install="docker", auth="none",
+                       docker_image="mcp/git",
+                       image_digest="sha256:abc123")
+    params = stdio_params_for(pin)
+    assert params.command == "docker"
+    assert params.args == ["run", "--rm", "-i", "mcp/git@sha256:abc123"]
+
+
+def test_stdio_params_for_docker_raises_on_missing_fields():
+    pin = PinnedServer(name="x", description="", install="docker", auth="none",
+                       docker_image="mcp/git")  # no image_digest
     with pytest.raises(ServerInstallError):
         stdio_params_for(pin)
 

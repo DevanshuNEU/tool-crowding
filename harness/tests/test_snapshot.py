@@ -76,7 +76,8 @@ def _fake_pin(
     git_sha: str | None = None,
     npm_lock_hash: str | None = "lock-hash-abc",
     npm_version: str | None = "1.0.0",
-    docker_digest: str | None = None,
+    docker_image: str | None = None,
+    image_digest: str | None = None,
 ) -> PinnedServer:
     return PinnedServer(
         name=name,
@@ -88,7 +89,8 @@ def _fake_pin(
         git_sha=git_sha,
         npm_version=npm_version,
         npm_lock_hash=npm_lock_hash,
-        docker_digest=docker_digest,
+        docker_image=docker_image,
+        image_digest=image_digest,
         tarball_sha256=None,
     )
 

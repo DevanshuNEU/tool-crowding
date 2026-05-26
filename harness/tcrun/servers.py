@@ -86,7 +86,8 @@ class PinnedServer:
     git_sha: str | None = None
     npm_version: str | None = None
     npm_lock_hash: str | None = None
-    docker_digest: str | None = None
+    docker_image: str | None = None
+    image_digest: str | None = None
     tarball_sha256: str | None = None
 
 
@@ -130,7 +131,8 @@ def load_pinned_servers(yaml_path: Path | str) -> dict[str, PinnedServer]:
                 git_sha=_normalize_pin(row.get("git_sha")),
                 npm_version=_normalize_pin(row.get("npm_version")),
                 npm_lock_hash=_normalize_pin(row.get("npm_lock_hash")),
-                docker_digest=_normalize_pin(row.get("docker_digest")),
+                docker_image=_normalize_pin(row.get("docker_image")),
+                image_digest=_normalize_pin(row.get("image_digest")),
                 tarball_sha256=_normalize_pin(row.get("tarball_sha256")),
             )
             out[ps.name] = ps
@@ -155,7 +157,9 @@ def verify_pins(servers: dict[str, PinnedServer], allow_unpinned: bool = False) 
 
     For source installs (self-hosted, npx-or-pip): require `git_sha`.
     For npx installs: require `npm_lock_hash` OR `npm_version`.
-    For docker installs: require `docker_digest`.
+    For docker installs: require both `docker_image` and `image_digest`
+    (the digest alone is not addressable by `docker run`; we need
+    `<image>@sha256:...` form).
 
     `allow_unpinned=True` is for harness-build smoke tests only; production
     sweeps must run with `allow_unpinned=False` (the default).
@@ -170,8 +174,10 @@ def verify_pins(servers: dict[str, PinnedServer], allow_unpinned: bool = False) 
             if not (ps.npm_lock_hash or ps.npm_version):
                 raise ServerPinMismatch(f"{name}: npx install requires npm_lock_hash or npm_version")
         elif ps.install == "docker":
-            if not ps.docker_digest:
-                raise ServerPinMismatch(f"{name}: docker install requires docker_digest pin")
+            if not (ps.docker_image and ps.image_digest):
+                raise ServerPinMismatch(
+                    f"{name}: docker install requires both docker_image and image_digest pins"
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -193,9 +199,14 @@ def stdio_params_for(pin: PinnedServer) -> Any:
         # (e.g., `mcp-server-git`). Name is the binary by convention.
         return StdioServerParameters(command=pin.name, args=[])
     if pin.install == "docker":
-        # Docker invocation: `docker run --rm -i <digest>`; relies on stdio.
-        digest = pin.docker_digest or "latest"
-        return StdioServerParameters(command="docker", args=["run", "--rm", "-i", digest])
+        # `docker run --rm -i <image>@sha256:<hex>` — digest-pinned reference.
+        # A bare sha256 is not addressable; the repo prefix is required.
+        if not (pin.docker_image and pin.image_digest):
+            raise ServerInstallError(
+                f"{pin.name}: docker install requires both docker_image and image_digest"
+            )
+        image_ref = f"{pin.docker_image}@{pin.image_digest}"
+        return StdioServerParameters(command="docker", args=["run", "--rm", "-i", image_ref])
     raise ServerInstallError(f"{pin.name}: unsupported install type {pin.install!r}")
 
 

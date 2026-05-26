@@ -1,11 +1,16 @@
 {
   "docker_images": {
-    "ghcr.io/github/github-mcp-server": "sha256:fc0318a670520247ae6d58930c7c54a2f82cc7652dc7809044abff77db467a7a"
+    "ghcr.io/github/github-mcp-server": "sha256:e3816a476a977cfb836e7d221510011436c654d11861db66ecfd826601aba6a4",
+    "mcp/fetch": "sha256:d9907377c03da91e49cf02c3dd6f0f83d1e0183e1222850f92595089f2c9a59d",
+    "mcp/git": "sha256:ad6af958e79466a14b895891e772fdda28fdc12c06fff4a70637b66773303a2c",
+    "mcp/sequentialthinking": "sha256:cd3174b2ecf37738654cf7671fb1b719a225c40a78274817da00c4241f465e5f",
+    "mcp/sqlite": "sha256:efbc05ccace18df122f26b674bd1730c76ece716551df2b3961d519909c34696",
+    "mcp/time": "sha256:9c46a918633fb474bf8035e3ee90ebac6bcf2b18ccb00679ac4c179cba0ebfcf"
   },
-  "harness_git_sha": "bff91cfa8421a49a6a5d1563e967b380ce119916",
+  "harness_git_sha": "a857612f5de896ca19169085924e2c24f6e39f26",
   "os": "macOS-15.0.1-arm64-arm-64bit-Mach-O",
   "pip_freeze": [
-    "-e git+ssh://git@github.com/DevanshuNEU/tool-crowding.git@bff91cfa8421a49a6a5d1563e967b380ce119916#egg=tool_crowding&subdirectory=harness",
+    "-e git+ssh://git@github.com/DevanshuNEU/tool-crowding.git@a857612f5de896ca19169085924e2c24f6e39f26#egg=tool_crowding&subdirectory=harness",
     "PyJWT==2.13.0",
     "PyYAML==6.0.3",
     "Pygments==2.20.0",

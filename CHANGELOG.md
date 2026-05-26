@@ -4,6 +4,20 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Fixed — docker MCP server pinning end-to-end: yaml field-name mismatch + invalid `docker run` reference (2026-05-26)
+
+- `servers_pinned.yaml` used `docker_image` and `image_digest` for `github_mcp`, but `tcrun/servers.py::load_pinned_servers` read `docker_digest` — so the docker fields had never actually been loaded into `PinnedServer`. `verify_pins(...)` would have raised `ServerPinMismatch("docker install requires docker_digest pin")` for any pinned docker server because `pin.docker_digest` was always `None`. Latent since the docker branch landed; surfaced only when `github_mcp`'s digest finally got pulled (Docker daemon HTTP 500 had blocked the capture since 2026-05-23).
+- `stdio_params_for(pin)`'s docker branch built `docker run --rm -i <bare-sha256>` from `pin.docker_digest or "latest"`. A bare digest is not addressable by `docker run` — the canonical form is `<image>@sha256:<hex>`. Even after fixing the field-name bug, every docker spawn would have failed.
+- Fix: `PinnedServer.docker_digest` renamed to `image_digest`; new `docker_image` field. `load_pinned_servers` reads both. `verify_pins` requires both for `install: docker`. `stdio_params_for` builds `f"{pin.docker_image}@{pin.image_digest}"`; raises `ServerInstallError` if either is missing (defense-in-depth — `verify_pins` is the contract gate, but the snapshot path doesn't run it).
+- `tcrun/snapshot.py::_pin_identity` renamed `pin.docker_digest` → `pin.image_digest` to match.
+- 6 new tests in `tests/test_servers.py`: `verify_pins` rejects partial docker pin (image-only, digest-only); accepts both-present; `load_pinned_servers` reads `docker_image` + `image_digest` from yaml; `stdio_params_for` builds the digest-pinned reference; raises on missing fields.
+
+### Changed — 5 npm-distributed MCP servers migrated to official `mcp/*` Docker images (2026-05-26)
+
+- `npx -y @modelcontextprotocol/server-{git,fetch,sequentialthinking,time,sqlite}` is 404 on npm as of 2026-05-26 (audited against the npm registry directly). All 5 packages have official Docker images at `mcp/*` on Docker Hub (modelcontextprotocol-owned). Migrated `tcrun/servers_pinned.yaml` to `install: docker` for each, pinned by image digest. `github_mcp` digest also captured (was TBD since 2026-05-23 Docker daemon outage). See `DevVault/tool-crowding/server-pool-audit-2026-05-26.md` for the upstream-npm failure evidence + migration rationale.
+- `environment.lock` regenerated: `docker_images` count 0 → 6.
+- `pool/descriptions.json` bootstrapped via `tcrun snapshot-descriptions --all`: 7 servers populated (5 newly-docker'd: git_mcp/fetch_mcp/sequential_thinking_mcp/time_mcp/sqlite_mcp; plus filesystem_mcp + memory_mcp on npx). Remaining failures are pre-existing and unblocked by this work: `github_mcp` (needs `GITHUB_PERSONAL_ACCESS_TOKEN` for MCP handshake), `aider_mcp`/`oci` (need `server-pool/` clones), `postgres_mcp`/`brave_search_mcp`/`slack_mcp` (`stdio_params_for` has no `install: tarball` branch yet), `linear_mcp`/`notion_mcp` (`package: TBD`, OAuth-deferred post-pilot).
+
 ### Fixed — pin `typer<0.26` to keep `CliRunner.isolated_filesystem` available (2026-05-26)
 
 - Typer 0.26.0 (released 2026-05-26) replaced its `CliRunner` with a fresh `typer._click.testing.CliRunner` that no longer inherits from `click.testing.CliRunner`, so `isolated_filesystem()` is no longer a method. CI installed typer 0.26.0 transitively (pyproject had `typer>=0.12` with no upper bound) and 5 tests in `tests/test_cli.py` failed with `AttributeError: 'CliRunner' object has no attribute 'isolated_filesystem'`. Added an upper bound `typer>=0.12,<0.26` to unblock CI. Follow-up migration tracked in [#1](https://github.com/DevanshuNEU/tool-crowding/issues/1) (replace `runner.isolated_filesystem()` with pytest's `tmp_path` + `monkeypatch.chdir`).

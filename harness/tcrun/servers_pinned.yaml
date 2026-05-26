@@ -1,23 +1,19 @@
 # tcrun/servers_pinned.yaml
 # Server pinning table — mirror of ../../design/SERVER_POOL.md
-# SHAs and npm-lock entries populate as servers install during harness day 1.
 # This file's CONTENTS participate in run_id per ../../design/REPRODUCIBILITY.md §1
-# Last touched: 2026-05-23 (5 remaining no-OAuth servers install attempted; see install-blocker note)
+# Last touched: 2026-05-26 (npm-distributed MCP servers migrated to official mcp/* Docker
+# images; github_mcp digest captured; see server-pool-audit-2026-05-26 in vault for the
+# upstream npm 404 evidence + migration rationale).
 #
-# Note on distractor npm package names: best-effort from public MCP server registries.
-# Verify each at install time via `npm view <package>`; correct any mismatch before SHA pinning.
-#
-# install-progress (2026-05-23 Sat PM, main-context re-run): 5 of 6 remaining no-OAuth
-# servers now installed and pinned from the unblocked main-context shell. Pinned today:
+# install-progress (2026-05-26):
 #   - oci git_sha (cloned from DevanshuNEU/lco-fork at HEAD)
 #   - aider_mcp git_sha (cloned from disler/aider-mcp-server at HEAD)
-#   - postgres_mcp tarball sha256 (npm pack @0.6.2; deprecated registry entry preserved locally)
-#   - brave_search_mcp tarball sha256 (npm pack @0.6.2; deprecated registry entry preserved locally)
-#   - slack_mcp tarball sha256 (npm pack @2025.4.25; deprecated registry entry preserved locally)
-# Still TBD:
-#   - github_mcp Docker image digest — Docker daemon returned HTTP 500 on image pull.
-#     Likely Docker Desktop API version mismatch; restart Docker Desktop and re-run
-#     `docker pull ghcr.io/github/github-mcp-server:latest && docker inspect ...`.
+#   - postgres_mcp / brave_search_mcp / slack_mcp tarball sha256 (deprecated npm entries
+#     preserved as local tarballs per REPRODUCIBILITY.md §1)
+#   - github_mcp / git_mcp / fetch_mcp / sequential_thinking_mcp / time_mcp / sqlite_mcp:
+#     Docker images pinned by digest from mcp/* (modelcontextprotocol-owned) and
+#     ghcr.io/github/github-mcp-server. Re-capture digests via
+#     `docker pull <image>:<tag> && docker image inspect --format='{{index .RepoDigests 0}}' <image>`.
 # Linear + Notion intentionally deferred post-pilot (OAuth-gated; not blocking v1).
 
 primary_servers:
@@ -38,17 +34,19 @@ primary_servers:
     install: docker
     docker_image: ghcr.io/github/github-mcp-server
     docker_tag: latest
-    image_digest: TBD  # Docker daemon HTTP 500 on pull attempt 2026-05-23 Sat PM; restart Docker Desktop and re-run `docker pull ... && docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/github/github-mcp-server`
+    image_digest: sha256:e3816a476a977cfb836e7d221510011436c654d11861db66ecfd826601aba6a4
+    pinned_at: 2026-05-26
     auth: PAT
     reachability: 2
     domain_overlap: primary
 
   - name: git_mcp
-    description: Git MCP — local git grep/log/blame
-    install: npx
-    package: "@modelcontextprotocol/server-git"
-    npm_version: TBD
-    npm_lock_hash: TBD
+    description: Git MCP — local git grep/log/blame (official mcp/git image; upstream npm package @modelcontextprotocol/server-git is 404 as of 2026-05-26)
+    install: docker
+    docker_image: mcp/git
+    docker_tag: latest
+    image_digest: sha256:ad6af958e79466a14b895891e772fdda28fdc12c06fff4a70637b66773303a2c
+    pinned_at: 2026-05-26
     auth: none
     reachability: 1
     domain_overlap: primary
@@ -65,11 +63,12 @@ primary_servers:
     domain_overlap: primary
 
   - name: fetch_mcp
-    description: Fetch MCP — web-fetch baseline (naive retrieval via GitHub README/issues)
-    install: npx
-    package: "@modelcontextprotocol/server-fetch"
-    npm_version: TBD
-    npm_lock_hash: TBD
+    description: Fetch MCP — web-fetch baseline (official mcp/fetch image; upstream npm package @modelcontextprotocol/server-fetch is 404 as of 2026-05-26)
+    install: docker
+    docker_image: mcp/fetch
+    docker_tag: latest
+    image_digest: sha256:d9907377c03da91e49cf02c3dd6f0f83d1e0183e1222850f92595089f2c9a59d
+    pinned_at: 2026-05-26
     auth: none
     reachability: 1
     domain_overlap: primary
@@ -96,31 +95,34 @@ distractors:
     domain_overlap: orthogonal
 
   - name: sequential_thinking_mcp
-    description: Sequential Thinking MCP — step-by-step reasoning aid
-    install: npx
-    package: "@modelcontextprotocol/server-sequentialthinking"  # verify at install
-    npm_version: TBD
-    npm_lock_hash: TBD
+    description: Sequential Thinking MCP — step-by-step reasoning aid (official mcp/sequentialthinking image; upstream npm package 404 as of 2026-05-26)
+    install: docker
+    docker_image: mcp/sequentialthinking
+    docker_tag: latest
+    image_digest: sha256:cd3174b2ecf37738654cf7671fb1b719a225c40a78274817da00c4241f465e5f
+    pinned_at: 2026-05-26
     auth: none
     reachability: 1
     domain_overlap: orthogonal
 
   - name: time_mcp
-    description: Time MCP — clock + timezone utilities
-    install: npx
-    package: "@modelcontextprotocol/server-time"  # verify at install
-    npm_version: TBD
-    npm_lock_hash: TBD
+    description: Time MCP — clock + timezone utilities (official mcp/time image; upstream npm package 404 as of 2026-05-26)
+    install: docker
+    docker_image: mcp/time
+    docker_tag: latest
+    image_digest: sha256:9c46a918633fb474bf8035e3ee90ebac6bcf2b18ccb00679ac4c179cba0ebfcf
+    pinned_at: 2026-05-26
     auth: none
     reachability: 1
     domain_overlap: orthogonal
 
   - name: sqlite_mcp
-    description: SQLite MCP — query a local sqlite database
-    install: npx
-    package: "@modelcontextprotocol/server-sqlite"  # verify at install
-    npm_version: TBD
-    npm_lock_hash: TBD
+    description: SQLite MCP — query a local sqlite database (official mcp/sqlite image; upstream npm package 404 as of 2026-05-26)
+    install: docker
+    docker_image: mcp/sqlite
+    docker_tag: latest
+    image_digest: sha256:efbc05ccace18df122f26b674bd1730c76ece716551df2b3961d519909c34696
+    pinned_at: 2026-05-26
     auth: none
     reachability: 1
     domain_overlap: code-adjacent
