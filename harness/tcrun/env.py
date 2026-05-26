@@ -18,6 +18,7 @@ import hashlib
 import platform
 import socket
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,10 +52,16 @@ def _sha256_text(text: str) -> str:
 
 
 def _pip_freeze() -> str:
-    """`pip freeze` output, sorted for stable hashing. Empty string on failure."""
+    """`pip freeze` output, sorted for stable hashing. Empty string on failure.
+
+    Bound to `sys.executable` so the captured deps are the running interpreter's,
+    not whichever `pip` happens to be first on `$PATH` (which would yield the
+    system or homebrew env and silently poison `package_hash` / env.lock).
+    """
     try:
         out = subprocess.run(
-            ["pip", "freeze"], capture_output=True, text=True, timeout=15, check=False
+            [sys.executable, "-m", "pip", "freeze"],
+            capture_output=True, text=True, timeout=15, check=False,
         )
         lines = sorted(line.strip() for line in out.stdout.splitlines() if line.strip())
         return "\n".join(lines)

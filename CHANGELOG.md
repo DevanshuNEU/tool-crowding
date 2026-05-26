@@ -4,6 +4,10 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Fixed — `_pip_freeze` bound to running interpreter (2026-05-26)
+
+- `tcrun/env.py::_pip_freeze` invoked `pip freeze` via `$PATH`, which resolves to whichever `pip` happens to be first on the shell's PATH (homebrew/system) instead of the venv that's actually running `tcrun`. Same root cause poisoned both call sites: `EnvFingerprint.package_hash` (hashed into every `Trial.env`) and `environment.lock.pip_freeze` (content-hashed into `run_id` via `Config.PATH_FIELDS`). Surfaced when the first real `tcrun snapshot-env` invocation captured a 33-package homebrew env instead of the venv's 59-package tcrun environment. Now `[sys.executable, "-m", "pip", "freeze"]`, so the captured deps always belong to the interpreter that's running. Regression test in `tests/test_env.py` asserts the subprocess argv starts with `sys.executable`.
+
 ### Added — install-time artifact generators: `tcrun snapshot-env` + `tcrun snapshot-descriptions` (2026-05-26)
 
 - `tcrun/snapshot.py`: deterministic generators for the two install-time artifacts that participate in `run_id` via `Config.PATH_FIELDS` (per `design/REPRODUCIBILITY.md §1`):

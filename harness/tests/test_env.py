@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import patch
 
 from tcrun.env import (
     EnvFingerprint,
     RunEnvSummary,
     _ping_latency_ms,
+    _pip_freeze,
     capture_fingerprint,
     capture_run_summary,
 )
@@ -71,3 +73,23 @@ def test_run_summary_handles_unreachable_network():
     with patch("tcrun.env._ping_latency_ms", return_value=None):
         summary = capture_run_summary()
     assert summary.network_latency_p50_ms is None
+
+
+def test_pip_freeze_invokes_running_interpreter():
+    # Regression: _pip_freeze must invoke `<sys.executable> -m pip freeze`,
+    # not bare `pip` (which resolves via $PATH and silently captures whichever
+    # interpreter's env happens to be first — poisoning package_hash and
+    # environment.lock.pip_freeze).
+    captured: dict[str, object] = {}
+
+    class _Result:
+        stdout = ""
+
+    def _spy(argv, **_kw):
+        captured["argv"] = argv
+        return _Result()
+
+    with patch("tcrun.env.subprocess.run", side_effect=_spy):
+        _pip_freeze()
+    assert captured["argv"][0] == sys.executable
+    assert captured["argv"][1:] == ["-m", "pip", "freeze"]
