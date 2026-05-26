@@ -22,7 +22,6 @@ embedder: models/embedder.json         # 8th artifact; locked 2026-05-25 (REPROD
 
 # Non-path fields (value-hashed)
 primary_servers:
-  - oci
   - github_mcp
   - git_mcp
 
