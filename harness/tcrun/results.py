@@ -77,10 +77,16 @@ class ServerEntry(BaseModel):
 
 
 class SamplingParams(BaseModel):
-    """Model sampling parameters (SPEC.md §4)."""
+    """Model sampling parameters (SPEC.md §4).
+
+    `top_p` was removed 2026-05-26: Sonnet 4.6+ rejects requests that specify
+    both `temperature` and `top_p` (400 invalid_request_error). With
+    `temperature=0.0` (our deterministic default), `top_p` has no observable
+    effect anyway. Recording a `top_p` value in the Trial row that we never
+    actually sent to the API would mislead downstream reproductions.
+    """
 
     temperature: float = 0.0
-    top_p: float = 1.0
     max_tokens: int = 4096
 
 

@@ -2,10 +2,10 @@
   "schema_version": "1.0",
   "models": [
     {
-      "model_id": "claude-sonnet-4-6-20260131",
+      "model_id": "claude-sonnet-4-6",
       "provider": "anthropic",
       "api_url": "https://api.anthropic.com/v1/messages",
-      "checkpoint_identifier": "claude-sonnet-4-6-20260131",
+      "checkpoint_identifier": "claude-sonnet-4-6",
       "default_temperature": 0.0,
       "default_max_tokens": 4096,
       "system_prefix_template": "You are a code-retrieval assistant. [nonce: {nonce}]",

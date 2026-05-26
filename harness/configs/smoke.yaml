@@ -30,7 +30,7 @@ distractors: []
 
 N: [1]
 runs_per_cell: 1
-model: claude-sonnet-4-6-20260131
+model: claude-sonnet-4-6
 host: claude-desktop
 seed: 42
 

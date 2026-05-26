@@ -643,7 +643,6 @@ async def _invoke_api(
                 model=inputs.model_snapshot_id,
                 max_tokens=inputs.sampling_params.max_tokens,
                 temperature=inputs.sampling_params.temperature,
-                top_p=inputs.sampling_params.top_p,
                 system=system_prompt,
                 messages=messages,
                 tools=tools,

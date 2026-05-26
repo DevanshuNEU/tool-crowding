@@ -4,6 +4,17 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Fixed — model_id `claude-sonnet-4-6-20260131` did not exist; corrected to `claude-sonnet-4-6` (2026-05-26)
+
+- `models/endpoints.json` + `configs/mve.yaml` + `configs/smoke.yaml` pinned the model as `claude-sonnet-4-6-20260131`. Anthropic returned 404 `not_found_error: model: claude-sonnet-4-6-20260131`. Probe of `https://api.anthropic.com/v1/models` confirmed the correct identifier is `claude-sonnet-4-6` (no date suffix). Sonnet 4.6 has not yet been promoted to a dated snapshot — older models like `claude-sonnet-4-5-20250929` use the dated form, current frontier models don't. Surfaced 2026-05-26 by the first live smoke after the auth + env-override fixes unblocked the path.
+- Caveat for reproducibility: `claude-sonnet-4-6` may be a floating alias rather than a frozen snapshot. The run_id chain captures the model_id string verbatim, so if Anthropic later releases `claude-sonnet-4-6-<date>`, our captured snapshot is the un-dated form. Migrate to the dated ID when one is published.
+
+### Fixed — removed `top_p` from API calls + SamplingParams (Sonnet 4.6+ rejects both `temperature` and `top_p` together) (2026-05-26)
+
+- `tcrun/agent.py::_invoke_api` sent both `temperature=0.0` and `top_p=1.0` on every API call. Sonnet 4.6 returns 400 `invalid_request_error: temperature and top_p cannot both be specified for this model`. Surfaced immediately after the model_id fix landed.
+- With `temperature=0.0` (our deterministic-dispatch default per pre-registration), `top_p` is a no-op anyway. Removed the `top_p` kwarg from the `client.messages.create` call. Removed the `top_p` field from `SamplingParams` (`tcrun/results.py`) so Trial rows don't record a value we never sent — recording `top_p=1.0` while the API used Anthropic's own internal default would be a reproducibility lie.
+- No new tests; the existing smoke + 257-test suite covers the schema migration (no tests referenced `SamplingParams.top_p`; the field was effectively dead code).
+
 ### Fixed — `.env` now overrides shell-exported credentials, with a loud warning on drift (2026-05-26)
 
 - `tcrun/cli.py::_load_env` previously called `load_dotenv(dotenv_path=env_path)` with `override=False` (python-dotenv's default). A stale `export ANTHROPIC_API_KEY=...` line in the user's shell rc (`~/.zshrc`, `~/.bashrc`) would silently shadow the value in `.env` — every subprocess inherits the shell env, dotenv refuses to overwrite, and Anthropic returns 401 against a key the dashboard swears is live. Surfaced 2026-05-26: a freshly-rotated key in `harness/.env` produced 401s for 30 minutes of debugging because `~/.zshrc:11` exported a long-revoked key into every shell. The harness's reproducibility chain depends on `.env` being the source of truth for credentials — silent shell-leak means two machines with different `.zshrc` files would produce different `run_id`s for the same checked-in config.
