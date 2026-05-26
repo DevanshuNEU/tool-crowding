@@ -338,6 +338,38 @@ async def test_run_trial_halts_on_cache_creation_input_tokens():
 
 
 # ---------------------------------------------------------------------------
+# F13: uncaught exceptions in the agent loop re-raise (do not swallow into
+# error_type="harness_bug"). Surfaced 2026-05-26 when an invalid Anthropic
+# API key produced 5 trials reported "completed" with cost_usd=0.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_trial_re_raises_on_unhandled_api_exception():
+    class WeirdAPIError(Exception):
+        pass
+
+    async def create(**_kw):
+        raise WeirdAPIError("auth refused")
+
+    client = SimpleNamespace(messages=SimpleNamespace(create=create))
+    harness = AgentHarness(anthropic_client=client)
+    with pytest.raises(WeirdAPIError, match="auth refused"):
+        await harness.run_trial(_inputs(sessions={"oci": _session_with([])}))
+
+
+@pytest.mark.asyncio
+async def test_run_trial_re_raises_on_oracle_exception():
+    def oracle_that_raises(text, inputs):
+        raise RuntimeError("oracle ate it")
+
+    client = _client_returning(_api_response("any answer"))
+    harness = AgentHarness(anthropic_client=client, oracle=oracle_that_raises)
+    with pytest.raises(RuntimeError, match="oracle ate it"):
+        await harness.run_trial(_inputs(sessions={"oci": _session_with([])}))
+
+
+# ---------------------------------------------------------------------------
 # Hallucinated tool name (F11)
 # ---------------------------------------------------------------------------
 

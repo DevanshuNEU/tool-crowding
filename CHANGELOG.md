@@ -4,6 +4,17 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Fixed — agent.py re-raises F13 exceptions instead of swallowing into `error_type="harness_bug"` (2026-05-26)
+
+- `tcrun/agent.py::AgentHarness.run_trial` caught every non-(CacheLeakHalt, APIFault, ServerFault, TimeoutError) exception in the agent loop, set `error_type = "harness_bug"`, built a Trial row with `cost_usd=0` + `tool_calls=[]`, and returned it. The comment on line 288 promised "will halt"; the code didn't deliver. Same pattern at the oracle-call site (line 297-299) caught oracle exceptions into `error_type = "harness_bug"` instead of propagating.
+- The orchestrator's `_run_trial_with_sem` only halts on exceptions it actually sees. With the agent swallowing F13s, every cell that hit a run-wide failure (auth, malformed credentials, harness-side bug) wrote a fake-completion row and the summary reported `n_completed=N` with `running_cost_usd=$0`. Surfaced 2026-05-26 on the first live smoke (5 trials × `anthropic.AuthenticationError` → 5 "completed" rows; tool_crowding had no way to distinguish "5 trials passed" from "5 trials never made an API call").
+- Fix: both sites now re-raise. `categorize()` (tcrun/retry.py) returns `"persistent_failure"` for any class outside `(APIFault, ServerFault)`, and `Orchestrator._run_trial_with_sem` already raises `OrchestratorHalt` on that category. So re-raising at the agent layer is the minimum change that wires the existing halt path through.
+- 2 new tests in `tests/test_agent.py`: `test_run_trial_re_raises_on_unhandled_api_exception` (injects a non-APIFault Exception into `client.messages.create`, expects propagation) + `test_run_trial_re_raises_on_oracle_exception` (oracle raises; expects propagation). 253 → 255 passing.
+
+### Added — Phase 2 smoke config + task file (2026-05-26)
+
+- `harness/configs/smoke.yaml` and `harness/tasks/smoke.jsonl` (single-query): minimal plumbing-validation config for Phase 2 step 2. Cell math: 1 primary (git_mcp) × 1 N × 1 query × 5 orderings × 1 rep = 5 trials. No padded control, no baselines, retriever-off, runs_per_cell=1. Designed for ~$0.15 worst case at Sonnet 4.6. Smoke is plumbing-only: orchestrator does not enforce alignment between the cell's `primary_server` and the query's `primary_server`, so using a git_mcp cell on an oci-targeted query is legal and produces a clean Trial row regardless of oracle score.
+
 ### Fixed — docker MCP server pinning end-to-end: yaml field-name mismatch + invalid `docker run` reference (2026-05-26)
 
 - `servers_pinned.yaml` used `docker_image` and `image_digest` for `github_mcp`, but `tcrun/servers.py::load_pinned_servers` read `docker_digest` — so the docker fields had never actually been loaded into `PinnedServer`. `verify_pins(...)` would have raised `ServerPinMismatch("docker install requires docker_digest pin")` for any pinned docker server because `pin.docker_digest` was always `None`. Latent since the docker branch landed; surfaced only when `github_mcp`'s digest finally got pulled (Docker daemon HTTP 500 had blocked the capture since 2026-05-23).

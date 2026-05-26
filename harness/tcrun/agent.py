@@ -285,18 +285,23 @@ class AgentHarness:
         except (asyncio.TimeoutError, TimeoutError) as e:
             error_type = "latency_timeout"
             error_detail = str(e) or "timeout"
-        except Exception as e:  # F13: any other uncaught -> harness_bug, will halt
+        except Exception:  # F13: re-raise so orchestrator halts (SPEC.md §7).
+            # Anything not in (CacheLeakHalt, APIFault, ServerFault, TimeoutError)
+            # is a persistent failure: retry/categorize returns "persistent_failure"
+            # for unknown classes, and the orchestrator's _run_trial_with_sem raises
+            # OrchestratorHalt on that category. Swallowing into error_type="harness_bug"
+            # and returning a Trial would let the run continue marking false-completions
+            # for every cell — see 2026-05-26 smoke (5/5 trials "completed" with
+            # cost_usd=0 after anthropic.AuthenticationError on the first API call).
             logger.exception("uncaught exception in agent loop")
-            error_type = "harness_bug"
-            error_detail = f"{type(e).__name__}: {e}"
+            raise
 
         passed = False
         if error_type == "none":
-            try:
-                passed = bool(self._oracle(final_text, inputs))
-            except Exception as e:
-                error_type = "harness_bug"
-                error_detail = f"oracle raised: {e}"
+            # Oracle failures are F13-class (the oracle is part of the harness,
+            # not the SUT); re-raise to let the orchestrator halt rather than
+            # writing a row claiming the trial finished cleanly.
+            passed = bool(self._oracle(final_text, inputs))
             if not passed and error_type == "none":
                 # Classify wrong_tool vs wrong_answer vs agent_gave_up.
                 if first_correct_step is None and not tool_calls:
