@@ -113,6 +113,165 @@ def test_per_trial_nonce_is_hex_and_changes_per_call():
     assert a != b  # secrets.token_hex is fresh per call
 
 
+# ---------------------------------------------------------------------------
+# Retriever-ON path (v1.2 embedder layer, locked 2026-05-25)
+# ---------------------------------------------------------------------------
+
+
+class _StubEmbedderForAgent:
+    """Embedder Protocol stub — assigns the first tool the best score."""
+
+    name = "stub"
+    provider = "openai"
+    snapshot = "stub"
+    dimension = 3
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        # First text is the query; next N are tool descriptions.
+        # Map text index → vector: idx 0 query == [1,0,0]; descriptions get
+        # decaying weights so index 0 is best, 1 is worst.
+        out = [[1.0, 0.0, 0.0]]
+        n_desc = len(texts) - 1
+        for i in range(n_desc):
+            score = 1.0 - (i / max(n_desc, 1))
+            out.append([score, 1.0 - score, 0.0])
+        return out
+
+
+def _retriever_session(tool_names: list[str]) -> SimpleNamespace:
+    """A fake session that exposes tool_names but no list_tools detail."""
+    return SimpleNamespace(
+        name="oci",
+        pin=SimpleNamespace(git_sha="abc"),
+        tool_names=tool_names,
+        session=SimpleNamespace(list_tools=AsyncMock(return_value=SimpleNamespace(tools=[]))),
+    )
+
+
+def test_retriever_on_requires_embedder_or_spec():
+    """retriever-on without an embedder or pin spec must error loud."""
+    harness = AgentHarness(anthropic_client=_client_returning(_api_response("ok")))
+    inputs = _inputs(
+        tool_listing_strategy="retriever-on",
+        sessions={"oci": _retriever_session(["a", "b", "c", "d", "e", "f", "g"])},
+    )
+    with pytest.raises(RuntimeError, match="requires an embedder"):
+        asyncio.run(harness._build_tools_manifest(inputs))
+
+
+def test_retriever_on_filters_to_top_k_via_injected_embedder():
+    """With a stub embedder, retriever-on keeps top-5 tools by cosine in score order."""
+    harness = AgentHarness(
+        anthropic_client=_client_returning(_api_response("ok")),
+        embedder=_StubEmbedderForAgent(),
+    )
+    # Stub assigns descending scores by index → top-5 are tools a..e in order.
+    inputs = _inputs(
+        tool_listing_strategy="retriever-on",
+        sessions={"oci": _retriever_session(["a", "b", "c", "d", "e", "f", "g"])},
+    )
+    tools, fakes, skipped = asyncio.run(harness._build_tools_manifest(inputs))
+    assert [t["name"] for t in tools] == ["a", "b", "c", "d", "e"]
+    assert fakes == set()
+    assert skipped is None
+
+
+def test_retriever_top_k_is_configurable_via_trial_inputs():
+    """A non-default retriever_top_k on TrialInputs flows into the filter."""
+    harness = AgentHarness(
+        anthropic_client=_client_returning(_api_response("ok")),
+        embedder=_StubEmbedderForAgent(),
+    )
+    inputs = _inputs(
+        tool_listing_strategy="retriever-on",
+        retriever_top_k=3,
+        sessions={"oci": _retriever_session(["a", "b", "c", "d", "e", "f", "g"])},
+    )
+    tools, _, _ = asyncio.run(harness._build_tools_manifest(inputs))
+    assert [t["name"] for t in tools] == ["a", "b", "c"]
+
+
+def test_retriever_on_with_empty_tools_raises():
+    """Empty manifest with retriever-on is an upstream config error, not silent skip."""
+    harness = AgentHarness(
+        anthropic_client=_client_returning(_api_response("ok")),
+        embedder=_StubEmbedderForAgent(),
+    )
+    # session with NO tool_names → manifest stays empty
+    inputs = _inputs(
+        tool_listing_strategy="retriever-on",
+        sessions={"oci": _retriever_session([])},
+    )
+    with pytest.raises(RuntimeError, match="at least one tool"):
+        asyncio.run(harness._build_tools_manifest(inputs))
+
+
+# ---------------------------------------------------------------------------
+# embedder_spec → Trial row attribution (v1.2; uncovered prior to this batch)
+# ---------------------------------------------------------------------------
+
+
+def test_embedder_spec_overrides_trial_row_defaults():
+    """inputs.embedder_spec must flow into Trial.embedder_* fields, not v1.2 defaults.
+
+    Without this override, a TC_EMBEDDER=voyage run would write trial rows
+    claiming OpenAI — mis-attributing the embedder relative to run_id's pin.
+    """
+    harness = AgentHarness(anthropic_client=_client_returning(_api_response("ok")))
+    spec = {
+        "provider": "voyageai",
+        "model": "voyage-3-large",
+        "snapshot": "voyage-3-large",
+        "dimension": 1024,
+    }
+    inputs = _inputs(
+        embedder_spec=spec,
+        sessions={"oci": _session_with(["search"])},
+    )
+    trial = asyncio.run(harness.run_trial(inputs))
+    assert trial.embedder_provider == "voyageai"
+    assert trial.embedder_model == "voyage-3-large"
+    assert trial.embedder_snapshot == "voyage-3-large"
+    assert trial.embedder_dimension == 1024
+
+
+def test_embedder_defaults_apply_when_spec_absent():
+    """Without inputs.embedder_spec, Trial uses v1.2 defaults (OpenAI primary)."""
+    harness = AgentHarness(anthropic_client=_client_returning(_api_response("ok")))
+    inputs = _inputs(sessions={"oci": _session_with(["search"])})
+    assert inputs.embedder_spec is None
+    trial = asyncio.run(harness.run_trial(inputs))
+    assert trial.embedder_provider == "openai"
+    assert trial.embedder_model == "text-embedding-3-large"
+    assert trial.embedder_dimension == 3072
+
+
+def test_retriever_on_with_is_padded_n1_raises():
+    """retriever-on + padded-N=1 are mutually exclusive design choices."""
+    harness = AgentHarness(
+        anthropic_client=_client_returning(_api_response("ok")),
+        embedder=_StubEmbedderForAgent(),
+    )
+    inputs = _inputs(
+        tool_listing_strategy="retriever-on",
+        is_padded_n1=True,
+        sessions={"oci": _retriever_session(["a", "b"])},
+    )
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        asyncio.run(harness._build_tools_manifest(inputs))
+
+
+def test_retriever_off_full_strategy_keeps_all_tools():
+    """The default `full` strategy returns the full unranked tool list."""
+    harness = AgentHarness(anthropic_client=_client_returning(_api_response("ok")))
+    inputs = _inputs(
+        tool_listing_strategy="full",
+        sessions={"oci": _retriever_session(["a", "b", "c", "d", "e", "f", "g"])},
+    )
+    tools, _, _ = asyncio.run(harness._build_tools_manifest(inputs))
+    assert len(tools) == 7
+
+
 def test_system_prompt_embeds_nonce():
     prompt = _build_system_prompt("abc123", "find foo")
     assert "<nonce>abc123</nonce>" in prompt

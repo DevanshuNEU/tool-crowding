@@ -50,6 +50,7 @@ def _build_config(tmp_path: Path, *, corpus: Path | None = None) -> Config:
         endpoints=_write(tmp_path / "endpoints.json", "{}"),
         environment=_write(tmp_path / "environment.lock", "py=3.11"),
         padding_corpus=corpus or _make_corpus(tmp_path / "corpus.jsonl"),
+        embedder=_write(tmp_path / "embedder.json", '{"provider":"openai","model":"text-embedding-3-large","dimension":3072}'),
         primary_servers=["oci"],
         distractors=["fs", "mem"],
         N=[1],
@@ -69,6 +70,7 @@ def test_all_gates_pass(tmp_path: Path):
     assert names == {
         "artifact_hashes", "run_id_match", "smoke_test",
         "model_fingerprints", "trial_schema", "padding_corpus",
+        "embedder",
     }
 
 
@@ -128,6 +130,79 @@ def test_model_fingerprint_gate_invokes_callable(tmp_path: Path):
     report = PreflightGate(cfg, model_fingerprint_check=check).run()
     assert report.ok
     assert seen == [cfg.model]
+
+
+# ----------------------------------------------------------------------
+# Embedder gate (gate 7; added 2026-05-25 v1.2 schema bump)
+# ----------------------------------------------------------------------
+
+
+def test_embedder_gate_passes_for_valid_pin(tmp_path: Path):
+    cfg = _build_config(tmp_path)
+    report = PreflightGate(cfg).run()
+    assert report.ok
+    embedder_gate = [g for g in report.gates if g[0] == "embedder"][0]
+    assert embedder_gate[1] is True
+    assert "provider=openai" in embedder_gate[2]
+
+
+def test_embedder_gate_fails_on_unknown_provider(tmp_path: Path):
+    cfg = _build_config(tmp_path)
+    Path(cfg.embedder).write_text(
+        '{"provider":"cohere","model":"x","dimension":1024}', encoding="utf-8",
+    )
+    with pytest.raises(PreflightError):
+        PreflightGate(cfg).run()
+
+
+def test_embedder_gate_fails_on_bad_dimension(tmp_path: Path):
+    cfg = _build_config(tmp_path)
+    Path(cfg.embedder).write_text(
+        '{"provider":"openai","model":"x","dimension":0}', encoding="utf-8",
+    )
+    with pytest.raises(PreflightError):
+        PreflightGate(cfg).run()
+
+
+def test_embedder_gate_fails_when_require_api_key_and_env_unset(tmp_path: Path, monkeypatch):
+    cfg = _build_config(tmp_path)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with pytest.raises(PreflightError, match="OPENAI_API_KEY"):
+        PreflightGate(cfg, embedder_require_api_key=True).run()
+
+
+def test_embedder_gate_passes_when_require_api_key_and_env_set(tmp_path: Path, monkeypatch):
+    cfg = _build_config(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-fake-for-test")
+    report = PreflightGate(cfg, embedder_require_api_key=True).run()
+    assert report.ok
+    embedder_gate = [g for g in report.gates if g[0] == "embedder"][0]
+    assert "api_key ok" in embedder_gate[2]
+
+
+def test_embedder_gate_skips_key_check_for_bge_local(tmp_path: Path, monkeypatch):
+    """BGE provider is local — no API key required even with require_api_key=True."""
+    cfg = _build_config(tmp_path)
+    Path(cfg.embedder).write_text(
+        '{"provider":"bge","model":"BAAI/bge-m3","dimension":1024}', encoding="utf-8",
+    )
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    report = PreflightGate(cfg, embedder_require_api_key=True).run()
+    assert report.ok
+    embedder_gate = [g for g in report.gates if g[0] == "embedder"][0]
+    assert "local" in embedder_gate[2]
+
+
+def test_embedder_gate_rejects_placeholder_snapshot(tmp_path: Path):
+    """A TBD-prefixed snapshot would lie in trial rows about what was actually computed."""
+    cfg = _build_config(tmp_path)
+    Path(cfg.embedder).write_text(
+        '{"provider":"bge","model":"BAAI/bge-m3","dimension":1024,'
+        '"snapshot":"TBD-safetensors-sha256"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(PreflightError, match="placeholder snapshot"):
+        PreflightGate(cfg).run()
 
 
 def test_model_fingerprint_gate_halts_when_unreachable(tmp_path: Path):

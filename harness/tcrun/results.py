@@ -2,20 +2,26 @@
 
 Implements SPEC.md §4 (Data Schema) + §3 ResultWriter responsibility.
 
-Schema v1.1 (post-PADDING_STRATEGY.md v1.2 amendment) adds three optional
-fields with sensible defaults; backwards-compatible read of v1.0 records is
-preserved via the schema_version dispatch in `read_jsonl`:
+Schema v1.2 (locked 2026-05-25, embedder swappability work) adds four
+embedder fields (mandatory with v1-primary defaults) and aligns the
+`tool_listing_strategy` literal to Config (drops legacy `rag-mcp` and
+`mcp-zero` values, neither of which any trial ever wrote):
 
-    - is_padded_n1: bool = False
-    - fake_tool_invoked: bool = False
-    - padding_skipped: str | None = None
+    - embedder_provider: Literal["openai","voyageai","bge"] = "openai"
+    - embedder_model: str = "text-embedding-3-large"
+    - embedder_snapshot: str = "text-embedding-3-large"
+    - embedder_dimension: int = 3072
+
+Schema v1.1 (post-PADDING_STRATEGY.md v1.2 amendment) added three optional
+padding-control fields with sensible defaults.
 
 Schema evolution rules per SPEC.md §4: MINOR bump adds optional fields with
-defaults; old analyzers ignore unknown fields. The reader returns Trial v1.1
-objects regardless of source version (v1.0 records hydrate with default values
-for the three new fields).
+defaults; old analyzers ignore unknown fields. The reader chains migrations
+v1.0 → v1.1 → v1.2 so any supported source version hydrates to the current
+schema. Pre-v1.2 records with legacy `tool_listing_strategy` values are
+normalized in the v1.1→v1.2 migration step.
 
-LOC budget per SPEC.md §11: ~220 LOC.
+LOC budget per SPEC.md §11: ~220 LOC (extended ~+30 for v1.2).
 """
 
 from __future__ import annotations
@@ -32,8 +38,13 @@ from pydantic import BaseModel, Field, ValidationError
 # Schema-version constants per SPEC.md §4 evolution rules.
 SCHEMA_VERSION_V1_0 = "1.0"
 SCHEMA_VERSION_V1_1 = "1.1"
-CURRENT_SCHEMA_VERSION = SCHEMA_VERSION_V1_1
-SUPPORTED_SCHEMA_VERSIONS: tuple[str, ...] = (SCHEMA_VERSION_V1_0, SCHEMA_VERSION_V1_1)
+SCHEMA_VERSION_V1_2 = "1.2"
+CURRENT_SCHEMA_VERSION = SCHEMA_VERSION_V1_2
+SUPPORTED_SCHEMA_VERSIONS: tuple[str, ...] = (
+    SCHEMA_VERSION_V1_0,
+    SCHEMA_VERSION_V1_1,
+    SCHEMA_VERSION_V1_2,
+)
 
 
 # Per-tool-call audit sub-schema. SPEC.md §4 Trial.tool_calls field.
@@ -107,8 +118,16 @@ class Trial(BaseModel):
     N: int = Field(..., ge=0)
     primary_server: str
     ordering_seed: int = Field(..., ge=0)
-    tool_listing_strategy: Literal["full", "rag-mcp", "mcp-zero", "oracle-filter"]
+    tool_listing_strategy: Literal["full", "retriever-on", "oracle-filter"]
     pass_criterion_id: str
+
+    # Embedder identity (v1.2 addition; load-bearing for retriever-ON arm + A1/A5
+    # detection per REPRODUCIBILITY.md §1 h_embedder row). Defaults match the v1
+    # primary pinned in models/embedder.json so v1.0/v1.1 migrations are clean.
+    embedder_provider: Literal["openai", "voyageai", "bge"] = "openai"
+    embedder_model: str = "text-embedding-3-large"
+    embedder_snapshot: str = "text-embedding-3-large"
+    embedder_dimension: int = Field(default=3072, ge=1)
 
     # What happened (Pareto x-axis definition per SPEC.md §4 inline comment)
     context_input_tokens: int = Field(..., ge=0)
@@ -196,12 +215,40 @@ def _migrate_v1_0_to_v1_1(record: dict) -> dict:
     return record
 
 
+# Legacy tool_listing_strategy values that were never written to a real trial
+# but lived as dead literals on Trial pre-v1.2. Map forward so any historical
+# record with these values still validates.
+_LEGACY_STRATEGY_NORMALIZE: dict[str, str] = {
+    "rag-mcp": "retriever-on",
+    "mcp-zero": "retriever-on",
+}
+
+
+def _migrate_v1_1_to_v1_2(record: dict) -> dict:
+    """Hydrate a v1.1 record with v1.2 defaults + normalize legacy strategy.
+
+    Defaults match the v1 primary embedder pinned in models/embedder.json
+    (OpenAI text-embedding-3-large, dim 3072). Pre-v1.2 trials that used a
+    different embedder configuration (none exist; the embedder layer is
+    greenfield in v1.2) would need a manual override at read time.
+    """
+    legacy = record.get("tool_listing_strategy")
+    if legacy in _LEGACY_STRATEGY_NORMALIZE:
+        record["tool_listing_strategy"] = _LEGACY_STRATEGY_NORMALIZE[legacy]
+    record.setdefault("embedder_provider", "openai")
+    record.setdefault("embedder_model", "text-embedding-3-large")
+    record.setdefault("embedder_snapshot", "text-embedding-3-large")
+    record.setdefault("embedder_dimension", 3072)
+    record["schema_version"] = SCHEMA_VERSION_V1_2
+    return record
+
+
 def read_jsonl(path: Path | str) -> Iterator[Trial]:
     """Stream Trial records from a results.jsonl, dispatching on schema_version.
 
-    Per SPEC.md §4 rule 6: "the analyzer dispatches on schema_version". v1.0
-    records are upgraded to v1.1 in memory via `_migrate_v1_0_to_v1_1`.
-    Unknown schema_version raises ValueError.
+    Per SPEC.md §4 rule 6: "the analyzer dispatches on schema_version". Older
+    records are upgraded in memory through the migration chain
+    v1.0 → v1.1 → v1.2. Unknown schema_version raises ValueError.
     """
     p = Path(path)
     with open(p, "r", encoding="utf-8") as fh:
@@ -218,6 +265,9 @@ def read_jsonl(path: Path | str) -> Iterator[Trial]:
                 )
             if version == SCHEMA_VERSION_V1_0:
                 record = _migrate_v1_0_to_v1_1(record)
+                version = SCHEMA_VERSION_V1_1
+            if version == SCHEMA_VERSION_V1_1:
+                record = _migrate_v1_1_to_v1_2(record)
             try:
                 yield Trial.model_validate(record)
             except ValidationError as e:

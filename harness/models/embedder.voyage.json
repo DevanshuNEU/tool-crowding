@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "provider": "voyageai",
+  "model": "voyage-3-large",
+  "snapshot": "voyage-3-large",
+  "api_version": "v1",
+  "dimension": 1024,
+  "normalized": true,
+  "active_role": "v2 robustness rotation"
+}

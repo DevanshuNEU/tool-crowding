@@ -48,6 +48,7 @@ dependencies = [
     "tqdm>=4.66",
     "tenacity>=8.0",
     "structlog>=24.0",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -62,6 +63,17 @@ dev = [
     "pytest-asyncio>=0.23",
     "ruff>=0.4",
     "pyright>=1.1",
+]
+# Embedder extras — install only what your active TC_EMBEDDER needs.
+# BGE pulls torch (~2GB); keep it isolated so OpenAI-only users don't pay for it.
+embedders-openai = ["openai>=1.40"]
+embedders-voyage = ["voyageai>=0.2"]
+embedders-bge = ["FlagEmbedding>=1.2", "torch>=2.2"]
+embedders-all = [
+    "openai>=1.40",
+    "voyageai>=0.2",
+    "FlagEmbedding>=1.2",
+    "torch>=2.2",
 ]
 
 [project.scripts]

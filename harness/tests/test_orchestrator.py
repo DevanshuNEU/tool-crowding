@@ -50,6 +50,7 @@ def _build_config(tmp_path: Path) -> Config:
         endpoints=_write_artifact(tmp_path / "endpoints.json", "{}"),
         environment=_write_artifact(tmp_path / "environment.lock", "py=3.11"),
         padding_corpus=_write_artifact(tmp_path / "corpus.jsonl", "{}"),
+        embedder=_write_artifact(tmp_path / "embedder.json", '{"provider":"openai","model":"text-embedding-3-large","dimension":3072}'),
         primary_servers=["oci"],
         distractors=["fs", "mem", "time", "seq", "sqlite"],
         N=[1, 5],
@@ -187,8 +188,12 @@ def test_run_dispatches_via_injected_factories(tmp_path: Path):
     cfg = _build_config(tmp_path)
     agents: list[_FakeAgent] = []
 
-    def agent_factory(pool):
+    def agent_factory(pool, embedder_spec):
+        # Real agent_factories must propagate embedder_spec into
+        # TrialInputs.embedder_spec; this fake just records that the
+        # orchestrator delivered it (asserted below).
         a = _FakeAgent(pool, cost_usd=0.001)
+        a.received_embedder_spec = embedder_spec
         agents.append(a)
         return a
 
@@ -205,6 +210,11 @@ def test_run_dispatches_via_injected_factories(tmp_path: Path):
     # Each cell counted once; checkpoint persisted.
     assert orch.checkpoint_path.exists()
     assert len(orch.checkpoint.completed_trial_ids) == len(cells)
+    # Orchestrator must have threaded embedder_spec into every agent.
+    assert agents, "factory was never called"
+    for a in agents:
+        assert a.received_embedder_spec["provider"] == "openai"
+        assert a.received_embedder_spec["dimension"] == 3072
 
 
 def test_resume_skips_completed_trials(tmp_path: Path):
@@ -213,7 +223,7 @@ def test_resume_skips_completed_trials(tmp_path: Path):
         cfg,
         queries=[SimpleNamespace(query_id="q1")],
         pool_factory=lambda names: _FakePool(names),
-        agent_factory=lambda pool: _FakeAgent(pool, cost_usd=0.001),
+        agent_factory=lambda pool, _spec: _FakeAgent(pool, cost_usd=0.001),
     )
     asyncio.run(orch.run())
     n_first = orch.checkpoint.running_cost_usd
@@ -221,7 +231,7 @@ def test_resume_skips_completed_trials(tmp_path: Path):
     # Second invocation: same run_dir, factories see zero new calls.
     agents: list[_FakeAgent] = []
 
-    def factory(pool):
+    def factory(pool, _embedder_spec):
         a = _FakeAgent(pool, cost_usd=0.001)
         agents.append(a)
         return a
@@ -245,7 +255,7 @@ def test_cost_cap_halts_run(tmp_path: Path):
         cfg,
         queries=[SimpleNamespace(query_id="q1")],
         pool_factory=lambda names: _FakePool(names),
-        agent_factory=lambda pool: _FakeAgent(pool, cost_usd=1.0),
+        agent_factory=lambda pool, _spec: _FakeAgent(pool, cost_usd=1.0),
         concurrency=1,
         cost_cap_usd=2.5,
     )
@@ -261,7 +271,7 @@ def test_uncategorized_exception_halts(tmp_path: Path):
         cfg,
         queries=[SimpleNamespace(query_id="q1")],
         pool_factory=lambda names: _FakePool(names),
-        agent_factory=lambda pool: _FakeAgent(pool, fail=True),
+        agent_factory=lambda pool, _spec: _FakeAgent(pool, fail=True),
         concurrency=1,
     )
     with pytest.raises(OrchestratorHalt):

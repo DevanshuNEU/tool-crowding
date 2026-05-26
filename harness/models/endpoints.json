@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "models": [
+    {
+      "model_id": "claude-sonnet-4-6-20260131",
+      "provider": "anthropic",
+      "api_url": "https://api.anthropic.com/v1/messages",
+      "checkpoint_identifier": "claude-sonnet-4-6-20260131",
+      "default_temperature": 0.0,
+      "default_max_tokens": 4096,
+      "system_prefix_template": "You are a code-retrieval assistant. [nonce: {nonce}]",
+      "nonce_policy": "32-byte hex per-trial (SPEC.md M5; agent.py CacheLeakHalt F18)"
+    }
+  ],
+  "spec_ref": "../../design/REPRODUCIBILITY.md#1"
+}

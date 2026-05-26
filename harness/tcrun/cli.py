@@ -191,8 +191,25 @@ def validate(
     )
 
 
+def _load_env() -> None:
+    """Auto-load harness/.env so OPENAI_API_KEY, TC_EMBEDDER, etc. resolve.
+
+    Anchored to the harness package root (not CWD) so `tcrun` invocations
+    from outside `harness/` (e.g. parent dir, or via absolute path from
+    elsewhere) still pick up the .env. Scoped to the CLI entry so test
+    imports stay env-isolated (tests drive os.environ explicitly).
+    """
+    try:
+        from dotenv import load_dotenv  # base dep per pyproject.toml
+    except ImportError:
+        return  # graceful no-op if dotenv missing (e.g., partial install)
+    env_path = Path(__file__).parents[1] / ".env"
+    load_dotenv(dotenv_path=env_path)
+
+
 def main() -> int:
     """CLI entry point (registered in pyproject.toml [project.scripts])."""
+    _load_env()
     app()
     return 0
 

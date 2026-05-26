@@ -8,16 +8,56 @@ file at that path. This catches both:
     (a) mutations to the Config itself (paths, flags, seed)
     (b) mutations to artifact CONTENTS at those paths
 
-See ../design/REPRODUCIBILITY.md §1 for the 7-artifact chain spec.
+See ../design/REPRODUCIBILITY.md §1 for the 8-artifact chain spec
+(embedder added as the 8th artifact 2026-05-25).
 """
 
 from __future__ import annotations
 import hashlib
 import json
+import os
+import sys
 from pathlib import Path
 from typing import ClassVar, Literal
 
 from pydantic import BaseModel
+
+
+# Embedder is the one Config knob users swap day-to-day (locked
+# 2026-05-25: "embedder runtime-swappable"). The TC_EMBEDDER env var
+# overrides the YAML's `embedder:` field at load time so a swap is one
+# `export` away — no edit to the committed config. Either a short alias
+# (openai / voyage / bge) or a literal path is accepted.
+# Reproducibility holds: compute_run_id hashes the *resolved* Config, so
+# different TC_EMBEDDER values produce different run_ids automatically.
+EMBEDDER_ALIASES: dict[str, str] = {
+    "openai": "models/embedder.json",
+    "voyage": "models/embedder.voyage.json",
+    "voyageai": "models/embedder.voyage.json",
+    "bge": "models/embedder.bge-m3.json",
+    "bge-m3": "models/embedder.bge-m3.json",
+}
+
+
+def _resolve_embedder_env(value: str) -> str:
+    """Map a TC_EMBEDDER value to a pin-file path. Accepts alias or literal path.
+
+    If the value matches no known alias AND doesn't look like a path (no `/`
+    and not ending in `.json`), warn — likely a typo'd alias such as
+    `voyage-ai` instead of `voyage`. Preserves the literal-path escape hatch
+    while making mistakes loud.
+    """
+    normalized = value.strip().lower()
+    if normalized in EMBEDDER_ALIASES:
+        return EMBEDDER_ALIASES[normalized]
+    if "/" not in value and not value.endswith(".json"):
+        print(
+            f"[load_config] WARNING: TC_EMBEDDER={value!r} matches no known alias "
+            f"({sorted(EMBEDDER_ALIASES)}) and doesn't look like a path; "
+            f"treating as literal path (will likely fail at preflight).",
+            file=sys.stderr,
+        )
+    return value
 
 
 class Config(BaseModel):
@@ -37,6 +77,10 @@ class Config(BaseModel):
     endpoints: Path
     environment: Path
     padding_corpus: Path
+    # Mandatory like the other 7 PATH_FIELDS. mve.yaml supplies the default
+    # pin path; TC_EMBEDDER env var (handled by load_config) is the runtime
+    # override. No Python-side default — forgetting embedder=... fails loud.
+    embedder: Path
 
     # Non-path fields (value-hashed)
     primary_servers: list[str]
@@ -48,6 +92,10 @@ class Config(BaseModel):
     seed: int = 42
 
     tool_listing_strategy: Literal["full", "retriever-on", "oracle-filter"] = "full"
+    # Top-k for the retriever-ON arm. Default 5 matches RAG-MCP §3 + our
+    # pre-registration; varying k produces a new run_id (value-hashed) so any
+    # sensitivity sweep is reproducibility-honest.
+    retriever_top_k: int = 5
     include_padded_n1_control: bool = True
     include_no_mcp_baseline: bool = False
     include_random_tool_call_baseline: bool = False
@@ -70,6 +118,7 @@ class Config(BaseModel):
         "endpoints",
         "environment",
         "padding_corpus",
+        "embedder",
     )
 
 
@@ -102,9 +151,28 @@ def compute_run_id(config: Config) -> str:
 
 
 def load_config(path: Path | str) -> Config:
-    """Load YAML config from disk and validate."""
+    """Load YAML config from disk, apply TC_EMBEDDER override, and validate.
+
+    Env override (runtime-swappable embedder per locked 2026-05-25 decision):
+        TC_EMBEDDER=voyage  → models/embedder.voyage.json
+        TC_EMBEDDER=bge     → models/embedder.bge-m3.json
+        TC_EMBEDDER=models/embedder.custom.json  → that path verbatim
+    The resolved Config hashes into run_id, so env overrides produce a new
+    run_id and the resolved config (post-override) is the audit artifact.
+    """
     import yaml
 
     with open(path, "r") as f:
         raw = yaml.safe_load(f)
+    env_choice = os.getenv("TC_EMBEDDER")
+    if env_choice:
+        resolved = _resolve_embedder_env(env_choice)
+        # Loud notification: a stale shell `export TC_EMBEDDER=voyage` from a
+        # prior session would otherwise silently change run_id at load time.
+        print(
+            f"[load_config] TC_EMBEDDER={env_choice!r} → embedder={resolved!r} "
+            f"(overrides YAML; resolved Config will hash into a new run_id)",
+            file=sys.stderr,
+        )
+        raw["embedder"] = resolved
     return Config(**raw)

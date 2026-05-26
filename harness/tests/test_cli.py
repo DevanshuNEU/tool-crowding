@@ -64,6 +64,8 @@ def _write_config(tmp_path: Path) -> Path:
     _write(cfg_dir / "descriptions.json", "{}")
     _write(cfg_dir / "endpoints.json", "{}")
     _write(cfg_dir / "environment.lock", "py=3.11")
+    _write(cfg_dir / "embedder.json",
+           '{"provider":"openai","model":"text-embedding-3-large","dimension":3072}')
     _make_corpus(cfg_dir / "corpus.jsonl")
     cfg_path = cfg_dir / "mve.yaml"
     cfg_path.write_text(
@@ -76,6 +78,7 @@ def _write_config(tmp_path: Path) -> Path:
                 "endpoints": str(cfg_dir / "endpoints.json"),
                 "environment": str(cfg_dir / "environment.lock"),
                 "padding_corpus": str(cfg_dir / "corpus.jsonl"),
+                "embedder": str(cfg_dir / "embedder.json"),
                 "primary_servers": ["oci"],
                 "distractors": ["fs", "mem"],
                 "N": [1],

@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from .embedder import Embedder, make_embedder, rank_tools_by_query
 from .env import EnvFingerprint
 from .results import (
     CURRENT_SCHEMA_VERSION,
@@ -126,6 +127,19 @@ class TrialInputs:
     # Environment fingerprint (per-trial; pre-captured by orchestrator)
     env: EnvFingerprint | None = None
 
+    # Embedder pin (models/embedder.json contents) — populates the 4 Trial
+    # embedder_* fields per row AND is the fallback construction spec when
+    # AgentHarness was created without a pre-built embedder client. The pin
+    # itself is content-hashed into run_id by Config; this dict is the runtime
+    # echo of that pin. None on retriever-OFF runs (Trial defaults apply).
+    embedder_spec: dict | None = None
+
+    # Retriever-ON top-k. Default 5 matches Config.retriever_top_k and
+    # RAG-MCP §3. The orchestrator/agent_factory MUST propagate
+    # Config.retriever_top_k into this field per-trial (parallel to embedder_spec)
+    # so trial behavior matches what's hashed in run_id.
+    retriever_top_k: int = 5
+
 
 # ---------------------------------------------------------------------------
 # Oracle protocol
@@ -169,10 +183,16 @@ class AgentHarness:
         oracle: OracleFn | None = None,
         *,
         max_turns: int | None = None,
+        embedder: Embedder | None = None,
     ):
         self._client = anthropic_client  # lazy AsyncAnthropic() if None
         self._oracle = oracle or _default_oracle_falsey
         self.max_turns = max_turns or self.MAX_TURNS
+        # Optional pre-built embedder client for retriever-ON. If None and a
+        # trial needs an embedder, _build_tools_manifest constructs one from
+        # inputs.embedder_spec on the fly. Tests inject a stub here to avoid
+        # API calls. Orchestrator should pass one in for client reuse.
+        self._embedder = embedder
 
     # ---- Public entry point -------------------------------------------------
 
@@ -288,7 +308,7 @@ class AgentHarness:
 
         finished_at = datetime.now(timezone.utc)
         env_ref = _to_env_ref(inputs.env)
-        trial = Trial.model_validate({
+        trial_dict: dict[str, Any] = {
             "schema_version": CURRENT_SCHEMA_VERSION,
             "harness_version": inputs.harness_version,
             "run_id": inputs.run_id,
@@ -324,8 +344,19 @@ class AgentHarness:
             "seed": inputs.seed,
             "oracle_version": inputs.oracle_version,
             "env": env_ref,
-        })
-        return trial
+        }
+        # Override the v1.2 embedder defaults with the configured pin when
+        # known. Reflecting the *configured* embedder (not "was it invoked")
+        # keeps the row consistent with run_id's h_embedder pin.
+        if inputs.embedder_spec is not None:
+            spec = inputs.embedder_spec
+            trial_dict["embedder_provider"] = spec.get("provider", "openai")
+            trial_dict["embedder_model"] = spec.get("model", "text-embedding-3-large")
+            trial_dict["embedder_snapshot"] = spec.get(
+                "snapshot", spec.get("model", "text-embedding-3-large")
+            )
+            trial_dict["embedder_dimension"] = spec.get("dimension", 3072)
+        return Trial.model_validate(trial_dict)
 
     # ---- Tool-list assembly + dispatch -------------------------------------
 
@@ -335,7 +366,9 @@ class AgentHarness:
         """Return (tools, fake_tool_names, padding_skipped).
 
         For padded-N=1, primary tool + fillers from `padding.select_padding`.
-        For unpadded trials, all tools across `inputs.sessions`.
+        For retriever-ON (RESEARCH_DESIGN.md §3.5), embed query + all tool
+        descriptions and keep the top-k=5 by cosine similarity.
+        For unpadded retriever-OFF trials, all tools across `inputs.sessions`.
         """
         tools: list[dict[str, Any]] = []
         fake_names: set[str] = set()
@@ -348,6 +381,38 @@ class AgentHarness:
             if not full and tool_list:
                 for n in tool_list:
                     tools.append({"name": n, "description": "", "input_schema": {"type": "object"}})
+        if inputs.tool_listing_strategy == "retriever-on":
+            # retriever-ON is mutually exclusive with padded-N=1 by design
+            # (padded-N=1 IS the no-distractor floor; retriever-ON is the
+            # distractor-aware filtering). Hard-fail if both somehow set.
+            if inputs.is_padded_n1:
+                raise ValueError(
+                    "retriever-on + is_padded_n1 are mutually exclusive "
+                    "(see RESEARCH_DESIGN.md §3.5)"
+                )
+            # Empty tool list with retriever-on means the orchestrator handed
+            # us a cell with no sessions, or every session reported zero tools.
+            # Silently passing through would skip the retrieval step and write
+            # a trial row claiming retriever-on with zero filtering happening.
+            if not tools:
+                raise RuntimeError(
+                    "retriever-on requires at least one tool to rank; "
+                    "got empty manifest (no sessions or sessions had no tools)"
+                )
+            embedder = self._embedder
+            if embedder is None:
+                if inputs.embedder_spec is None:
+                    raise RuntimeError(
+                        "retriever-on trial requires an embedder; pass one via "
+                        "AgentHarness(embedder=...) or set inputs.embedder_spec"
+                    )
+                embedder = make_embedder(inputs.embedder_spec)
+            descriptions = [t.get("description", "") for t in tools]
+            top_idxs = await rank_tools_by_query(
+                embedder, inputs.task_query, descriptions,
+                top_k=inputs.retriever_top_k,
+            )
+            tools = [tools[i] for i in top_idxs]
         if inputs.is_padded_n1:
             from . import padding as _padding  # local import: sibling module
             fakes, padding_skipped = _padding.select_padding(

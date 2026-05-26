@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "provider": "openai",
+  "model": "text-embedding-3-large",
+  "snapshot": "text-embedding-3-large",
+  "api_version": "v1",
+  "dimension": 3072,
+  "normalized": true,
+  "active_role": "v1 primary (retriever-ON + A1/A5 detection)"
+}

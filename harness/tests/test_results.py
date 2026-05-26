@@ -17,6 +17,7 @@ from tcrun.results import (
     CURRENT_SCHEMA_VERSION,
     SCHEMA_VERSION_V1_0,
     SCHEMA_VERSION_V1_1,
+    SCHEMA_VERSION_V1_2,
     EnvFingerprintRef,
     ResultWriter,
     SamplingParams,
@@ -68,23 +69,27 @@ def _make_trial(**overrides) -> Trial:
     return Trial.model_validate(base)
 
 
-def test_current_schema_version_is_v1_1():
-    assert CURRENT_SCHEMA_VERSION == SCHEMA_VERSION_V1_1
+def test_current_schema_version_is_v1_2():
+    assert CURRENT_SCHEMA_VERSION == SCHEMA_VERSION_V1_2
 
 
 def test_trial_validates_happy_path():
     t = _make_trial()
-    assert t.schema_version == SCHEMA_VERSION_V1_1
+    assert t.schema_version == SCHEMA_VERSION_V1_2
     assert t.is_padded_n1 is False
     assert t.fake_tool_invoked is False
     assert t.padding_skipped is None
+    # v1.2 embedder fields default to the v1 primary (OpenAI text-embedding-3-large).
+    assert t.embedder_provider == "openai"
+    assert t.embedder_model == "text-embedding-3-large"
+    assert t.embedder_dimension == 3072
     # `pass` is exposed via alias.
     assert t.model_dump(by_alias=True)["pass"] is True
 
 
 def test_trial_rejects_missing_required_field():
     with pytest.raises(ValidationError):
-        Trial.model_validate({"schema_version": "1.1"})  # everything else missing
+        Trial.model_validate({"schema_version": "1.2"})  # everything else missing
 
 
 def test_trial_rejects_bad_error_type():
@@ -112,23 +117,62 @@ def test_writer_appends_multiple_records_with_fsync(tmp_path: Path):
     assert rows[1].is_padded_n1 is True
 
 
-def test_reader_dispatches_v1_0_to_v1_1_migration(tmp_path: Path):
-    """v1.0 records hydrate with default values for the three v1.1 fields."""
+def test_reader_dispatches_v1_0_to_current_chain(tmp_path: Path):
+    """v1.0 records ride the full migration chain to v1.2 with all defaults applied."""
     record = _make_trial().model_dump(by_alias=True, mode="json")
     record["schema_version"] = SCHEMA_VERSION_V1_0
     record.pop("is_padded_n1", None)
     record.pop("fake_tool_invoked", None)
     record.pop("padding_skipped", None)
+    record.pop("embedder_provider", None)
+    record.pop("embedder_model", None)
+    record.pop("embedder_snapshot", None)
+    record.pop("embedder_dimension", None)
     out = tmp_path / "results.jsonl"
     out.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
     rows = list(read_jsonl(out))
     assert len(rows) == 1
-    # Migrated forward: schema_version bumped, defaults applied.
-    assert rows[0].schema_version == SCHEMA_VERSION_V1_1
+    # Migrated forward through the full chain v1.0 → v1.1 → v1.2.
+    assert rows[0].schema_version == SCHEMA_VERSION_V1_2
     assert rows[0].is_padded_n1 is False
     assert rows[0].fake_tool_invoked is False
     assert rows[0].padding_skipped is None
+    assert rows[0].embedder_provider == "openai"
+    assert rows[0].embedder_dimension == 3072
+
+
+def test_reader_dispatches_v1_1_to_v1_2_migration(tmp_path: Path):
+    """v1.1 records hydrate with v1 primary embedder defaults."""
+    record = _make_trial().model_dump(by_alias=True, mode="json")
+    record["schema_version"] = SCHEMA_VERSION_V1_1
+    record.pop("embedder_provider", None)
+    record.pop("embedder_model", None)
+    record.pop("embedder_snapshot", None)
+    record.pop("embedder_dimension", None)
+    out = tmp_path / "results.jsonl"
+    out.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rows = list(read_jsonl(out))
+    assert rows[0].schema_version == SCHEMA_VERSION_V1_2
+    assert rows[0].embedder_provider == "openai"
+    assert rows[0].embedder_model == "text-embedding-3-large"
+    assert rows[0].embedder_snapshot == "text-embedding-3-large"
+    assert rows[0].embedder_dimension == 3072
+
+
+@pytest.mark.parametrize("legacy_value", ["rag-mcp", "mcp-zero"])
+def test_reader_normalizes_legacy_tool_listing_strategy(legacy_value: str, tmp_path: Path):
+    """Both legacy `rag-mcp` and `mcp-zero` map forward to `retriever-on`."""
+    record = _make_trial().model_dump(by_alias=True, mode="json")
+    record["schema_version"] = SCHEMA_VERSION_V1_1
+    record["tool_listing_strategy"] = legacy_value
+    record.pop("embedder_provider", None)
+    out = tmp_path / "results.jsonl"
+    out.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rows = list(read_jsonl(out))
+    assert rows[0].tool_listing_strategy == "retriever-on"
 
 
 def test_reader_rejects_unsupported_schema_version(tmp_path: Path):

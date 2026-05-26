@@ -21,6 +21,17 @@ cycles when servers.py / agent.py are scaffolds):
     from tcrun.agent import AgentHarness
         await harness.run_trial(cell_spec, query) -> Trial
 
+agent_factory contract (v1.2+):
+    agent_factory(pool, embedder_spec) -> Agent
+
+    The orchestrator owns the embedder pin: it is read once at __init__ from
+    Config.embedder and threaded into every agent_factory call. Concrete agent
+    implementations MUST propagate embedder_spec into TrialInputs.embedder_spec
+    on every dispatched trial so the 4 Trial embedder_* fields stay consistent
+    with the run_id's h_embedder. The 2-arg signature is a hard contract: a
+    factory that forgets the spec fails loudly with a TypeError at dispatch,
+    not silently with mis-attributed trial rows.
+
 LOC budget per the implementation prompt: ~280 LOC.
 """
 
@@ -37,6 +48,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from tcrun.config import Config, compute_run_id
+from tcrun.embedder import load_embedder_pin
 from tcrun.results import ResultWriter, Trial
 from tcrun.retry import categorize
 from tcrun.seed import cell_seed as derive_cell_seed
@@ -177,6 +189,11 @@ class Orchestrator:
         self._pool_factory = pool_factory
         self._agent_factory = agent_factory
         self._queries = list(queries) if queries is not None else []
+        # Load the embedder pin once at __init__ (cheap; no SDK needed) so
+        # the agent_factory contract can deliver it to every dispatched agent.
+        # Failing here is the right place: pin malformed → orchestrator refuses
+        # to construct, no trials run, no half-pinned rows ever written.
+        self._embedder_spec = load_embedder_pin(self.config.embedder)
         self.checkpoint = self._load_checkpoint()
 
     # ---- checkpoint persistence ----
@@ -307,7 +324,11 @@ class Orchestrator:
             return
         server_names = self._server_names_for_group(cells[0])
         async with self._pool_factory(server_names) as pool:
-            agent = self._agent_factory(pool)
+            # Contract: agent_factory(pool, embedder_spec). The 2-arg signature
+            # is intentional — a factory that omits the spec parameter fails
+            # with TypeError here rather than silently dispatching trials whose
+            # row-level embedder fields don't match the run_id's h_embedder pin.
+            agent = self._agent_factory(pool, self._embedder_spec)
             tasks = [self._run_trial_with_sem(sem, agent, cell, writer) for cell in cells]
             for fut in asyncio.as_completed(tasks):
                 await fut

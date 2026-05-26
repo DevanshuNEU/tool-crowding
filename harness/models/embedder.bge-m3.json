@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "provider": "bge",
+  "model": "BAAI/bge-m3",
+  "snapshot": "TBD-safetensors-sha256",
+  "api_version": "local",
+  "dimension": 1024,
+  "normalized": true,
+  "weights_dir": "BAAI/bge-m3",
+  "active_role": "v2 robustness rotation (open-weights, local)"
+}

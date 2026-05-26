@@ -5,7 +5,8 @@
 #
 # Path-typed fields participate in run_id by content hash. Non-path fields by value.
 # `out` does NOT participate (running to a different output dir does not change run_id).
-# See ../../design/REPRODUCIBILITY.md §1 for the 7-artifact chain spec.
+# See ../../design/REPRODUCIBILITY.md §1 for the 8-artifact chain spec
+# (embedder added as the 8th artifact 2026-05-25).
 
 # Path-typed fields (content-hashed)
 task_set: tasks/v1/queries.jsonl
@@ -15,6 +16,9 @@ descriptions: pool/descriptions.json
 endpoints: models/endpoints.json
 environment: environment.lock
 padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json         # 8th artifact; locked 2026-05-25 (REPRODUCIBILITY.md §1)
+                                       # Runtime-swappable: `export TC_EMBEDDER=voyage|bge|openai`
+                                       # overrides this at config-load time without editing the YAML.
 
 # Non-path fields (value-hashed)
 primary_servers:
