@@ -1,4 +1,4 @@
-# tool-crowding test
+# tool-crowding
 
 > A pre-registered, open-methodology benchmark for measuring discrimination interference among concurrently-installed MCP servers on code retrieval.
 
