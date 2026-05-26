@@ -4,6 +4,10 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Fixed — pin `typer<0.26` to keep `CliRunner.isolated_filesystem` available (2026-05-26)
+
+- Typer 0.26.0 (released 2026-05-26) replaced its `CliRunner` with a fresh `typer._click.testing.CliRunner` that no longer inherits from `click.testing.CliRunner`, so `isolated_filesystem()` is no longer a method. CI installed typer 0.26.0 transitively (pyproject had `typer>=0.12` with no upper bound) and 5 tests in `tests/test_cli.py` failed with `AttributeError: 'CliRunner' object has no attribute 'isolated_filesystem'`. Added an upper bound `typer>=0.12,<0.26` to unblock CI. Follow-up migration tracked in [#1](https://github.com/DevanshuNEU/tool-crowding/issues/1) (replace `runner.isolated_filesystem()` with pytest's `tmp_path` + `monkeypatch.chdir`).
+
 ### Fixed — `snapshot_server_descriptions` error classification (2026-05-26)
 
 - `tcrun/snapshot.py::snapshot_server_descriptions` only caught `asyncio.TimeoutError` + `OSError` at the spawn site. When the MCP subprocess spawned successfully but died during `initialize()` (today's real-world git_mcp 404: npx exits non-zero → MCP client surfaces `McpError("Connection closed")` wrapped in `ExceptionGroup` from its anyio task group), the group escaped as an unhandled 9KB traceback instead of a clean `SnapshotError` — and `snapshot_all_descriptions`'s graceful-per-server-failure contract silently dropped because the bare `except Exception` it relies on doesn't match `ExceptionGroup`.
