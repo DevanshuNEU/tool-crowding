@@ -237,7 +237,7 @@ class EnvFingerprint(BaseModel):
 
 class Trial(BaseModel):
     # identity
-    schema_version: str = "1.0"
+    schema_version: str = "1.2"          # v1.2 added embedder fields (2026-05-25)
     harness_version: str
     run_id: str              # content-addressed, full run
     cell_id: str             # content-addressed, single (N, server_set, ordering)
@@ -257,7 +257,10 @@ class Trial(BaseModel):
     N: int                   # cardinality of server_set
     primary_server: str      # which code-retrieval server is being tested
     ordering_seed: int       # 0-4
-    tool_listing_strategy: Literal["full", "rag-mcp", "mcp-zero", "oracle-filter"]
+    # v1.2 alignment: literal narrowed to match Config.tool_listing_strategy.
+    # Legacy `rag-mcp` and `mcp-zero` values (never written in practice) are
+    # normalized to `retriever-on` by the v1.1→v1.2 migration in read_jsonl.
+    tool_listing_strategy: Literal["full", "retriever-on", "oracle-filter"]
     pass_criterion_id: str   # e.g., "symbol-plus-50pct-overlap-v1"
 
     # what happened
@@ -287,10 +290,21 @@ class Trial(BaseModel):
     error_detail: str | None = None
     cost_usd: float
 
-    # padded-N=1 control flags (v1.2 addition; see design/PADDING_STRATEGY.md)
+    # padded-N=1 control flags (schema v1.1; see design/PADDING_STRATEGY.md)
     is_padded_n1: bool = False           # this trial's server_set is the padded-N=1 condition
     fake_tool_invoked: bool = False      # the agent called a filler tool during this trial
     padding_skipped: str | None = None   # e.g., "budget_negative"; null when padding executed normally
+
+    # embedder identity (schema v1.2; load-bearing for retriever-ON arm + A1/A5
+    # detection per design/REPRODUCIBILITY.md §1 h_embedder row). Defaults
+    # match the v1 primary pinned in models/embedder.json so v1.0/v1.1
+    # migrations are clean. Orchestrator/agent_factory MUST override these
+    # from the resolved Config.embedder pin so the row reflects the configured
+    # embedder regardless of whether retriever-on actually invoked it.
+    embedder_provider: Literal["openai", "voyageai", "bge"] = "openai"
+    embedder_model: str = "text-embedding-3-large"
+    embedder_snapshot: str = "text-embedding-3-large"
+    embedder_dimension: int = 3072
 
     # provenance
     trace_path: str          # "results/<run_id>/traces/<trial_id>.jsonl"
@@ -302,11 +316,11 @@ class Trial(BaseModel):
 ### Schema evolution rules
 
 1. **`schema_version` is `MAJOR.MINOR`** (semver-lite).
-2. **MINOR bump**: add optional fields with sensible defaults. Old analyzers ignore unknown fields. Example: v1.1 adds `attention_dilution_score: float | None = None`.
+2. **MINOR bump**: add optional fields with sensible defaults. Old analyzers ignore unknown fields. Examples shipped: v1.1 added 3 padding-control fields; v1.2 added 4 embedder fields (`embedder_provider`, `embedder_model`, `embedder_snapshot`, `embedder_dimension`) defaulting to the v1 primary pin.
 3. **MAJOR bump**: incompatible change (rename, type change, removal). Requires a migration script in `harness/migrations/v1_to_v2.py` and a documented rationale in the migration's docstring. Old data is migrated forward, never deleted.
 4. **Never delete a field**: deprecate via `# DEPRECATED, do not use in new code` comment. Old records keep the field.
 5. **`harness_version`** is separate from `schema_version`: harness can ship a bug-fix release without bumping schema; schema bumps without harness bumps are also allowed (analyzer-only changes).
-6. **The analyzer dispatches on `schema_version`**: `analysis/readers/v1.py`, `analysis/readers/v2.py`, etc. v1 reader is frozen the day the first MVE result lands.
+6. **The analyzer dispatches on `schema_version`**: `tcrun.results.read_jsonl` chains migrations forward (`v1.0 → v1.1 → v1.2`) so any supported source hydrates to `CURRENT_SCHEMA_VERSION`. Pre-v1.2 records with the legacy `tool_listing_strategy` values `"rag-mcp"` or `"mcp-zero"` (never written by the harness, but reserved on the literal pre-v1.2) are normalized to `"retriever-on"` in the v1.1→v1.2 step. v1 reader is frozen the day the first MVE result lands.
 
 Second-best alternative: protobuf with `reserved` for deleted fields. Rejected because JSON Schema + Pydantic is enough at this volume and protobuf adds tooling overhead (compilation step, language bindings) for zero practical benefit at 18k records.
 
