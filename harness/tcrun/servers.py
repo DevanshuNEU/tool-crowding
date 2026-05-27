@@ -106,6 +106,11 @@ class PinnedServer:
     url: str | None = None
     snapshot_path: str | None = None
     snapshot_sha256: str | None = None
+    # Env var names to forward into the docker container via `-e <NAME>` (no
+    # value; docker picks each up from the host harness process env). Used for
+    # credentialed docker servers like github_mcp (PAT). Empty for everything
+    # else. Tuple keeps the dataclass frozen/hashable.
+    env_passthrough: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -166,6 +171,7 @@ def load_pinned_servers(yaml_path: Path | str) -> dict[str, PinnedServer]:
                 url=_normalize_pin(row.get("url")),
                 snapshot_path=_normalize_pin(row.get("snapshot_path")),
                 snapshot_sha256=_normalize_pin(row.get("snapshot_sha256")),
+                env_passthrough=tuple(row.get("env_passthrough") or ()),
             )
             out[ps.name] = ps
     return out
@@ -247,7 +253,11 @@ def stdio_params_for(pin: PinnedServer) -> Any:
                 f"{pin.name}: docker install requires both docker_image and image_digest"
             )
         image_ref = f"{pin.docker_image}@{pin.image_digest}"
-        return StdioServerParameters(command="docker", args=["run", "--rm", "-i", image_ref])
+        args = ["run", "--rm", "-i"]
+        for env_name in pin.env_passthrough:
+            args.extend(["-e", env_name])
+        args.append(image_ref)
+        return StdioServerParameters(command="docker", args=args)
     raise ServerInstallError(f"{pin.name}: unsupported install type {pin.install!r}")
 
 

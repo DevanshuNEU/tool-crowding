@@ -4,6 +4,14 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Added — `env_passthrough` threads host env vars into docker MCP containers (2026-05-27)
+
+- Closes the `github_mcp-pat-thread-via-docker-e` open loop carried forward from `7a785ff`. `PinnedServer` gains a frozen `env_passthrough: tuple[str, ...] = ()` field. `load_pinned_servers` reads `env_passthrough:` from yaml as a list and converts to tuple (immutable, keeps the dataclass hashable). `stdio_params_for` (docker branch) iterates the tuple and threads each name as `-e <NAME>` between `--rm -i` and the digest-pinned image ref. Default empty tuple means every existing docker server (5 of 6) keeps its old args verbatim — no behavior change for `git_mcp`, `fetch_mcp`, `sequential_thinking_mcp`, `time_mcp`, `sqlite_mcp`.
+- `servers_pinned.yaml`: `github_mcp` row gains `env_passthrough: [GITHUB_PERSONAL_ACCESS_TOKEN]`. At spawn time the docker container reads `GITHUB_PERSONAL_ACCESS_TOKEN` from the host harness process env (i.e., from `harness/.env` once that credential lands). Docker's `-e VARNAME` (no `=value`) form is the standard host-to-container forward; no value is written into the args, so the PAT does not appear in any logged command.
+- Data-driven by design: future credentialed docker servers add the env var name to yaml, not to code. No hardcoded server names in the docker branch.
+- Tests: +3 in `tests/test_servers.py` covering yaml load (round-trips `[GITHUB_PERSONAL_ACCESS_TOKEN]` to `("GITHUB_PERSONAL_ACCESS_TOKEN",)` and empty list to `()`), `stdio_params_for` docker threading (`-e GITHUB_PERSONAL_ACCESS_TOKEN` lands between `--rm -i` and the image ref), and the empty-passthrough negative (no `-e` flag in args for `git_mcp`). 283 → 286 passing.
+- Pilot sweep including `github_mcp` is gated only on the PAT landing in `harness/.env` (Devanshu's track-1 task). No further code change needed once the credential is present.
+
 ### Fixed — `enumerate_cells` now filters trials by each query's natural-fit `primary_server` (2026-05-26)
 
 - Closes the orchestrator `primary_server` filter open loop carried forward from `9a1b1e3` and re-flagged in `0e06d2b`. `tcrun/orchestrator.py::enumerate_cells` previously Cartesianed every query against every primary in `config.primary_servers`, ignoring each query's per-query `primary_server` metadata. With 21 public-tier queries re-curated to a 7/7/7 split across `{github_mcp, deepwiki, git_mcp}`, the unfiltered Cartesian produced 3× the trials needed and conflated natural-fit pairings with mismatched ones. `smoke.yaml`'s header comment already documented this as a known gap.

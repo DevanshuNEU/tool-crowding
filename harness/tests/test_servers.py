@@ -138,6 +138,28 @@ primary_servers:
     assert pins["github_mcp"].image_digest == "sha256:deadbeef"
 
 
+def test_load_pinned_servers_reads_env_passthrough(tmp_path: Path):
+    p = _write_yaml(tmp_path, """
+primary_servers:
+  - name: github_mcp
+    description: x
+    install: docker
+    docker_image: ghcr.io/github/github-mcp-server
+    image_digest: sha256:deadbeef
+    auth: PAT
+    env_passthrough: [GITHUB_PERSONAL_ACCESS_TOKEN]
+  - name: git_mcp
+    description: x
+    install: docker
+    docker_image: mcp/git
+    image_digest: sha256:cafe
+    auth: none
+""")
+    pins = load_pinned_servers(p)
+    assert pins["github_mcp"].env_passthrough == ("GITHUB_PERSONAL_ACCESS_TOKEN",)
+    assert pins["git_mcp"].env_passthrough == ()
+
+
 # ---------------------------------------------------------------------------
 # stdio params builder
 # ---------------------------------------------------------------------------
@@ -178,6 +200,28 @@ def test_stdio_params_for_docker_raises_on_missing_fields():
                        docker_image="mcp/git")  # no image_digest
     with pytest.raises(ServerInstallError):
         stdio_params_for(pin)
+
+
+def test_stdio_params_for_docker_threads_env_passthrough():
+    pin = PinnedServer(name="github_mcp", description="", install="docker", auth="PAT",
+                       docker_image="ghcr.io/github/github-mcp-server",
+                       image_digest="sha256:abc123",
+                       env_passthrough=("GITHUB_PERSONAL_ACCESS_TOKEN",))
+    params = stdio_params_for(pin)
+    assert params.command == "docker"
+    assert params.args == [
+        "run", "--rm", "-i",
+        "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "ghcr.io/github/github-mcp-server@sha256:abc123",
+    ]
+
+
+def test_stdio_params_for_docker_empty_env_passthrough_omits_e_flags():
+    pin = PinnedServer(name="git_mcp", description="", install="docker", auth="none",
+                       docker_image="mcp/git",
+                       image_digest="sha256:abc123")
+    params = stdio_params_for(pin)
+    assert "-e" not in params.args
 
 
 # ---------------------------------------------------------------------------
