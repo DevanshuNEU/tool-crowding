@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import subprocess
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
@@ -254,10 +255,27 @@ def stdio_params_for(pin: PinnedServer) -> Any:
             )
         image_ref = f"{pin.docker_image}@{pin.image_digest}"
         args = ["run", "--rm", "-i"]
+        # mcp.client.stdio.stdio_client filters subprocess env to a curated
+        # whitelist (PATH/HOME/USER/...) when StdioServerParameters.env is None,
+        # so `docker -e <NAME>` would forward a variable that's been stripped
+        # from docker's own env. Populate `env` explicitly with each declared
+        # passthrough name so the var survives into docker's process; the SDK
+        # merges this dict with its default whitelist (mcp/client/stdio L127).
+        env: dict[str, str] | None = None
+        if pin.env_passthrough:
+            env = {}
+            for env_name in pin.env_passthrough:
+                value = os.environ.get(env_name)
+                if value is None:
+                    raise ServerInstallError(
+                        f"{pin.name}: env_passthrough requires {env_name!r} in os.environ "
+                        f"(check harness/.env)"
+                    )
+                env[env_name] = value
         for env_name in pin.env_passthrough:
             args.extend(["-e", env_name])
         args.append(image_ref)
-        return StdioServerParameters(command="docker", args=args)
+        return StdioServerParameters(command="docker", args=args, env=env)
     raise ServerInstallError(f"{pin.name}: unsupported install type {pin.install!r}")
 
 

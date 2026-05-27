@@ -202,7 +202,8 @@ def test_stdio_params_for_docker_raises_on_missing_fields():
         stdio_params_for(pin)
 
 
-def test_stdio_params_for_docker_threads_env_passthrough():
+def test_stdio_params_for_docker_threads_env_passthrough(monkeypatch):
+    monkeypatch.setenv("GITHUB_PERSONAL_ACCESS_TOKEN", "ghp_fixture")
     pin = PinnedServer(name="github_mcp", description="", install="docker", auth="PAT",
                        docker_image="ghcr.io/github/github-mcp-server",
                        image_digest="sha256:abc123",
@@ -216,12 +217,38 @@ def test_stdio_params_for_docker_threads_env_passthrough():
     ]
 
 
+def test_stdio_params_for_docker_env_passthrough_populates_env_dict(monkeypatch):
+    # The mcp SDK's stdio_client merges params.env with a curated whitelist
+    # (PATH/HOME/USER/...). If params.env is None, declared env_passthrough
+    # vars are missing from docker's own process env and `-e <NAME>` forwards
+    # nothing. The fix populates params.env with each declared name's value
+    # from os.environ; this test pins that contract.
+    monkeypatch.setenv("GITHUB_PERSONAL_ACCESS_TOKEN", "ghp_fixture_value")
+    pin = PinnedServer(name="github_mcp", description="", install="docker", auth="PAT",
+                       docker_image="ghcr.io/github/github-mcp-server",
+                       image_digest="sha256:abc123",
+                       env_passthrough=("GITHUB_PERSONAL_ACCESS_TOKEN",))
+    params = stdio_params_for(pin)
+    assert params.env == {"GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_fixture_value"}
+
+
+def test_stdio_params_for_docker_env_passthrough_raises_on_missing_env(monkeypatch):
+    monkeypatch.delenv("GITHUB_PERSONAL_ACCESS_TOKEN", raising=False)
+    pin = PinnedServer(name="github_mcp", description="", install="docker", auth="PAT",
+                       docker_image="ghcr.io/github/github-mcp-server",
+                       image_digest="sha256:abc123",
+                       env_passthrough=("GITHUB_PERSONAL_ACCESS_TOKEN",))
+    with pytest.raises(ServerInstallError, match="env_passthrough requires"):
+        stdio_params_for(pin)
+
+
 def test_stdio_params_for_docker_empty_env_passthrough_omits_e_flags():
     pin = PinnedServer(name="git_mcp", description="", install="docker", auth="none",
                        docker_image="mcp/git",
                        image_digest="sha256:abc123")
     params = stdio_params_for(pin)
     assert "-e" not in params.args
+    assert params.env is None
 
 
 # ---------------------------------------------------------------------------

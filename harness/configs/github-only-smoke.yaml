@@ -1,0 +1,41 @@
+# configs/github-only-smoke.yaml — Phase 2 step 3 smoke (2026-05-27)
+#
+# PURPOSE: live end-to-end validation of the env_passthrough → docker → PAT
+# → GitHub API chain on github_mcp. Plumbing smoke (no science): the trial
+# may pass or fail the oracle; what matters is whether the docker container
+# spawns, authenticates against GitHub, executes a tool call, and writes a
+# Trial row without an F1/F2 install/health failure.
+#
+# Cost ceiling: 1 cell × 1 query × N=1 × 1 rep × 1 ordering ≈ $0.01-$0.05
+# at Sonnet 4.6. Watch for: ServerInstallError (PAT not threaded),
+# GitHub 401/403 (PAT scope), oracle 0 (acceptable — not a science run).
+
+# Path-typed fields (content-hashed into run_id)
+task_set: tasks/github_smoke.jsonl
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - github_mcp
+
+distractors: []
+
+N: [1]
+runs_per_cell: 1
+model: claude-sonnet-4-6
+host: claude-desktop
+seed: 42
+
+tool_listing_strategy: full         # retriever-OFF
+include_padded_n1_control: false    # no padded control for the smoke
+include_no_mcp_baseline: false
+include_random_tool_call_baseline: false
+ragmcp_replication: false
+
+out: results/github-smoke-001/
