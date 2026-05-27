@@ -220,10 +220,28 @@ class Orchestrator:
     # ---- enumeration ----
 
     def enumerate_cells(self) -> list[CellSpec]:
-        """Cartesian over (primary_server, N, query, ordering, repetition).
+        """Cartesian over (primary_server, N, query, ordering, repetition),
+        filtered so that each query is paired only with its natural-fit primary.
 
-        Plus an optional padded-N=1 control trial set when N=1 is in the
-        config and include_padded_n1_control is true.
+        Per-query `primary_server` metadata in `tasks/v1/queries.jsonl` records
+        which server a query was authored to be answered by. Cells where the
+        configured primary does not match the query's primary are skipped, so
+        per-primary MPD analysis cleanly aligns with the natural-fit hypothesis.
+
+        The filter is data-shape-aware:
+        - Query objects (production via TaskLoader, validated by Pydantic)
+          carry `primary_server: str` and are filtered.
+        - Raw strings / SimpleNamespace stubs without the attribute (test
+          ergonomics for tests that don't care about enumeration semantics)
+          bypass the filter and contribute the full Cartesian.
+
+        Padded-N=1 control cells follow the same filter: the padded control
+        for a query is emitted only against that query's natural-fit primary.
+
+        Halts loudly via OrchestratorHalt if the filter is applied to at least
+        one query AND zero cells survive — that signals a config/data mismatch
+        (e.g., every query targets a server not in `config.primary_servers`)
+        that the smoke or production sweep needs to know about immediately.
         """
         cells: list[CellSpec] = []
         primaries = list(self.config.primary_servers)
@@ -231,19 +249,25 @@ class Orchestrator:
         runs_per_cell = self.config.runs_per_cell
         # 5 orderings per cell per SPEC.md §5; honored by ordering_seed 0..4.
         orderings = list(range(5))
-        queries = [getattr(q, "query_id", str(q)) for q in self._queries]
-        if not queries:
-            # Permits enumeration tests without a populated TaskLoader; in
-            # production preflight ensures queries.jsonl is loaded first.
-            queries = ["__no_queries__"]
+        queries_list: list[Any] = list(self._queries) if self._queries else ["__no_queries__"]
 
-        for primary, N, q, ord_seed, rep in product(primaries, Ns, queries, orderings, range(runs_per_cell)):
+        any_filterable = any(getattr(q, "primary_server", None) for q in queries_list)
+        skipped_query_primaries: set[str] = set()
+
+        for primary, N, query_obj, ord_seed, rep in product(
+            primaries, Ns, queries_list, orderings, range(runs_per_cell)
+        ):
+            q_primary = getattr(query_obj, "primary_server", None)
+            if q_primary and q_primary != primary:
+                skipped_query_primaries.add(q_primary)
+                continue
+            query_id = getattr(query_obj, "query_id", str(query_obj))
             cells.append(
                 CellSpec(
                     run_id=self.run_id,
                     model=self.config.model,
                     N=N,
-                    query_id=q,
+                    query_id=query_id,
                     primary_server=primary,
                     ordering_seed=ord_seed,
                     repetition_id=rep,
@@ -256,13 +280,21 @@ class Orchestrator:
                         run_id=self.run_id,
                         model=self.config.model,
                         N=N,
-                        query_id=q,
+                        query_id=query_id,
                         primary_server=primary,
                         ordering_seed=ord_seed,
                         repetition_id=rep,
                         is_padded_n1=True,
                     )
                 )
+
+        if not cells and any_filterable:
+            unmatched = sorted(skipped_query_primaries - set(primaries))
+            raise OrchestratorHalt(
+                "enumerate_cells produced 0 cells after primary_server filter; "
+                f"config.primary_servers={primaries} did not intersect with any "
+                f"query.primary_server (unmatched query primaries: {unmatched})"
+            )
         return cells
 
     # ---- cost monitor ----

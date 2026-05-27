@@ -4,10 +4,14 @@
 # `tcrun run` walks the full path from config-load → preflight → cell
 # enumeration → docker pool spawn → Anthropic API → MCP tool calls →
 # Trial row write → oracle scoring → checkpoint + summary. The trials
-# WILL score 0 on the oracle because git_mcp can't retrieve pylint code
-# (orchestrator does not enforce query-primary alignment, so this is
-# legal as a plumbing smoke). The scientifically-valid smoke happens
-# after server-pool/oci is cloned + queries are aligned.
+# WILL score 0 on the oracle because git_mcp's docker container is
+# launched without a git repo mounted, so the agent's git_log / git_grep
+# tool calls return empty (smoke validates plumbing not science; first
+# scientifically-valid smoke needs server-pool/ clones + a volume mount
+# from track-2). The query's primary_server is set to git_mcp so the
+# orchestrator's primary_server filter emits this trial; pre-filter the
+# smoke deliberately misaligned (oci-targeted query on a git_mcp pool),
+# but that path is now invalid and would halt with OrchestratorHalt.
 #
 # Cell math: 1 primary × 1 N × 1 query × 5 orderings × 1 rep = 5 trials.
 # Cost ceiling ~$0.15 at Sonnet 4.6.

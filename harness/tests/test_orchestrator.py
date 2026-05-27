@@ -154,6 +154,89 @@ def test_enumerate_cells_includes_padded_control(tmp_path: Path):
     assert len(base) == 10
 
 
+def _cfg_two_primaries(tmp_path: Path) -> Config:
+    """Variant of _build_config with two primaries, for filter tests."""
+    cfg = _build_config(tmp_path)
+    return cfg.model_copy(update={"primary_servers": ["oci", "git_mcp"]})
+
+
+def test_enumerate_cells_filters_by_query_primary_server(tmp_path: Path):
+    """Production Query objects (with primary_server) are filtered: each query
+    only enumerates against its natural-fit primary, not the full Cartesian."""
+    cfg = _cfg_two_primaries(tmp_path)
+    queries = [
+        SimpleNamespace(query_id="q-oci", primary_server="oci"),
+        SimpleNamespace(query_id="q-git", primary_server="git_mcp"),
+    ]
+    orch = Orchestrator(cfg, queries=queries)
+    cells = orch.enumerate_cells()
+
+    # Pre-filter Cartesian: 2 primaries x 2 N x 2 queries x 5 ord x 1 rep = 40
+    # + 2 primaries x 2 queries x 5 ord (padded N=1) = 20 → 60 total
+    # Post-filter: each query only pairs with its primary, so
+    #   q-oci x oci x 2 N x 5 ord = 10 + 5 padded = 15
+    #   q-git x git_mcp x 2 N x 5 ord = 10 + 5 padded = 15
+    #   total = 30
+    assert len(cells) == 30
+    oci_cells = [c for c in cells if c.primary_server == "oci"]
+    git_cells = [c for c in cells if c.primary_server == "git_mcp"]
+    assert all(c.query_id == "q-oci" for c in oci_cells)
+    assert all(c.query_id == "q-git" for c in git_cells)
+
+
+def test_enumerate_cells_bypasses_filter_for_stubs_without_primary_server(tmp_path: Path):
+    """Test ergonomics: a stub without primary_server attribute contributes
+    to the full Cartesian (existing test pattern is preserved)."""
+    cfg = _cfg_two_primaries(tmp_path)
+    queries = [SimpleNamespace(query_id="q-stub")]  # no primary_server
+    orch = Orchestrator(cfg, queries=queries)
+    cells = orch.enumerate_cells()
+    # No filter applied → 2 primaries x 2 N x 1 query x 5 ord + 2 primaries x 5 ord padded
+    # = 20 + 10 = 30
+    assert len(cells) == 30
+    assert {c.primary_server for c in cells} == {"oci", "git_mcp"}
+
+
+def test_enumerate_cells_halts_when_all_queries_filtered_out(tmp_path: Path):
+    """If every query targets a primary not in config, halt loudly rather
+    than silently emit zero cells."""
+    cfg = _cfg_two_primaries(tmp_path)  # primaries = [oci, git_mcp]
+    queries = [
+        SimpleNamespace(query_id="q1", primary_server="aider_mcp"),
+        SimpleNamespace(query_id="q2", primary_server="fetch_mcp"),
+    ]
+    orch = Orchestrator(cfg, queries=queries)
+    with pytest.raises(OrchestratorHalt, match="0 cells after primary_server filter"):
+        orch.enumerate_cells()
+
+
+def test_enumerate_cells_padded_control_respects_filter(tmp_path: Path):
+    """Padded-N=1 control cells follow the same filter: emitted only for
+    a query's natural-fit primary, not all primaries."""
+    cfg = _cfg_two_primaries(tmp_path)  # primaries = [oci, git_mcp], N=[1, 5]
+    queries = [SimpleNamespace(query_id="q-oci", primary_server="oci")]
+    orch = Orchestrator(cfg, queries=queries)
+    cells = orch.enumerate_cells()
+    padded = [c for c in cells if c.is_padded_n1]
+    # Without filter: 2 primaries x 5 ord = 10 padded cells
+    # With filter:    1 primary  x 5 ord = 5 padded cells (only for oci, q-oci's natural fit)
+    assert len(padded) == 5
+    assert all(c.primary_server == "oci" for c in padded)
+
+
+def test_enumerate_cells_partial_filter_emits_only_matching_primaries(tmp_path: Path):
+    """If config has 3 primaries but query targets 1, only that primary's
+    cells emit. The other primaries get filtered out for that query."""
+    cfg = _build_config(tmp_path)
+    cfg = cfg.model_copy(update={"primary_servers": ["oci", "git_mcp", "github_mcp"]})
+    queries = [SimpleNamespace(query_id="q-only-oci", primary_server="oci")]
+    orch = Orchestrator(cfg, queries=queries)
+    cells = orch.enumerate_cells()
+    # 1 query x 1 matching primary x 2 N x 5 ord = 10 + 5 padded = 15
+    assert len(cells) == 15
+    assert {c.primary_server for c in cells} == {"oci"}
+
+
 def test_cell_id_is_deterministic(tmp_path: Path):
     c = CellSpec(run_id="r", model="m", N=1, query_id="q", primary_server="p",
                  ordering_seed=0, repetition_id=0)
