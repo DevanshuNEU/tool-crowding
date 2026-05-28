@@ -33,7 +33,7 @@ primary_servers:
     domain_overlap: primary
 
   - name: github_mcp
-    description: GitHub MCP — repo search, issues, PRs, files (Docker-distributed Go binary per official migration 2025; ghcr.io/github/github-mcp-server)
+    description: GitHub MCP — repo search, issues, PRs, files (Docker-distributed Go binary per official migration 2025; ghcr.io/github/github-mcp-server). Scoped to repos toolset + read-only at launch (see SERVER_POOL.md per-server scoping section).
     install: docker
     docker_image: ghcr.io/github/github-mcp-server
     docker_tag: latest
@@ -41,6 +41,7 @@ primary_servers:
     pinned_at: 2026-05-26
     auth: PAT
     env_passthrough: [GITHUB_PERSONAL_ACCESS_TOKEN]
+    server_args: ["stdio", "--toolsets=repos", "--read-only"]
     reachability: 2
     domain_overlap: primary
 

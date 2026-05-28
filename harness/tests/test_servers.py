@@ -252,6 +252,106 @@ def test_stdio_params_for_docker_empty_env_passthrough_omits_e_flags():
 
 
 # ---------------------------------------------------------------------------
+# server_args (per-server launch flags for tool-surface scoping)
+# ---------------------------------------------------------------------------
+
+
+def test_load_pinned_servers_reads_server_args(tmp_path: Path):
+    # The github-mcp-server image's default CMD is `stdio` (it's a Cobra
+    # subcommand, not the entrypoint). `docker run image <args>` replaces the
+    # CMD, so the yaml's server_args must include `stdio` first when the image
+    # uses a subcommand entrypoint. The yaml stores the full container argv.
+    p = _write_yaml(tmp_path, """
+primary_servers:
+  - name: github_mcp
+    description: x
+    install: docker
+    docker_image: ghcr.io/github/github-mcp-server
+    image_digest: sha256:deadbeef
+    auth: PAT
+    server_args: ["stdio", "--toolsets=repos", "--read-only"]
+  - name: git_mcp
+    description: x
+    install: docker
+    docker_image: mcp/git
+    image_digest: sha256:cafe
+    auth: none
+""")
+    pins = load_pinned_servers(p)
+    assert pins["github_mcp"].server_args == ("stdio", "--toolsets=repos", "--read-only")
+    assert pins["git_mcp"].server_args == ()
+
+
+def test_stdio_params_for_docker_appends_server_args_after_image_ref():
+    # server_args MUST land after image_ref in docker argv so they reach the
+    # container's entrypoint (the MCP binary), not docker itself. Pinning the
+    # ordering: [run, --rm, -i, image_ref, *server_args].
+    pin = PinnedServer(name="github_mcp", description="", install="docker", auth="none",
+                       docker_image="ghcr.io/github/github-mcp-server",
+                       image_digest="sha256:abc123",
+                       server_args=("--toolsets=repos", "--read-only"))
+    params = stdio_params_for(pin)
+    assert params.args == [
+        "run", "--rm", "-i",
+        "ghcr.io/github/github-mcp-server@sha256:abc123",
+        "--toolsets=repos", "--read-only",
+    ]
+
+
+def test_stdio_params_for_docker_server_args_after_env_passthrough(monkeypatch):
+    # When both env_passthrough and server_args are set, env -e flags precede
+    # the image_ref and server_args follow it. Ordering contract:
+    # [run, --rm, -i, -e ENV1, -e ENV2, image_ref, *server_args].
+    monkeypatch.setenv("GITHUB_PERSONAL_ACCESS_TOKEN", "ghp_fixture")
+    pin = PinnedServer(name="github_mcp", description="", install="docker", auth="PAT",
+                       docker_image="ghcr.io/github/github-mcp-server",
+                       image_digest="sha256:abc123",
+                       env_passthrough=("GITHUB_PERSONAL_ACCESS_TOKEN",),
+                       server_args=("--toolsets=repos", "--read-only"))
+    params = stdio_params_for(pin)
+    assert params.args == [
+        "run", "--rm", "-i",
+        "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "ghcr.io/github/github-mcp-server@sha256:abc123",
+        "--toolsets=repos", "--read-only",
+    ]
+
+
+def test_stdio_params_for_npx_appends_server_args_after_package():
+    pin = PinnedServer(name="some_npx_mcp", description="", install="npx", auth="none",
+                       package="@scope/server-x", npm_version="1.2.3",
+                       server_args=("--some-flag", "value"))
+    params = stdio_params_for(pin)
+    assert params.args == ["-y", "@scope/server-x@1.2.3", "--some-flag", "value"]
+
+
+def test_stdio_params_for_self_hosted_appends_server_args():
+    pin = PinnedServer(name="oci", description="", install="self-hosted", auth="none",
+                       git_sha="deadbeef",
+                       server_args=("--config", "/etc/oci.yml"))
+    params = stdio_params_for(pin)
+    assert params.command == "oci"
+    assert params.args == ["--config", "/etc/oci.yml"]
+
+
+def test_stdio_params_for_empty_server_args_unchanged():
+    # When server_args is the default empty tuple, behavior matches the
+    # pre-server_args contract exactly. Regression guard.
+    npx_pin = PinnedServer(name="time_mcp", description="", install="npx", auth="none",
+                           package="@mcp/time", npm_version="0.1.0")
+    assert stdio_params_for(npx_pin).args == ["-y", "@mcp/time@0.1.0"]
+
+    docker_pin = PinnedServer(name="git_mcp", description="", install="docker", auth="none",
+                              docker_image="mcp/git",
+                              image_digest="sha256:abc")
+    assert stdio_params_for(docker_pin).args == ["run", "--rm", "-i", "mcp/git@sha256:abc"]
+
+    sh_pin = PinnedServer(name="oci", description="", install="self-hosted", auth="none",
+                          git_sha="deadbeef")
+    assert stdio_params_for(sh_pin).args == []
+
+
+# ---------------------------------------------------------------------------
 # ServerPoolManager async lifecycle (mocked subprocess + ClientSession)
 # ---------------------------------------------------------------------------
 

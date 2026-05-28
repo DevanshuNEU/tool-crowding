@@ -112,6 +112,13 @@ class PinnedServer:
     # credentialed docker servers like github_mcp (PAT). Empty for everything
     # else. Tuple keeps the dataclass frozen/hashable.
     env_passthrough: tuple[str, ...] = ()
+    # Command-line args appended to the server invocation after the
+    # entrypoint marker (docker: after image_ref; npx: after package@ver;
+    # self-hosted: after binary). Used to scope an MCP's tool surface at
+    # launch time (e.g., github_mcp uses `--read-only --toolsets=repos` to
+    # drop a 38-tool surface to ~8). Empty for servers that don't expose
+    # CLI scope flags. Tuple for frozen-hashable, matching env_passthrough.
+    server_args: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -173,6 +180,7 @@ def load_pinned_servers(yaml_path: Path | str) -> dict[str, PinnedServer]:
                 snapshot_path=_normalize_pin(row.get("snapshot_path")),
                 snapshot_sha256=_normalize_pin(row.get("snapshot_sha256")),
                 env_passthrough=tuple(row.get("env_passthrough") or ()),
+                server_args=tuple(row.get("server_args") or ()),
             )
             out[ps.name] = ps
     return out
@@ -239,13 +247,18 @@ def stdio_params_for(pin: PinnedServer) -> Any:
 
     if pin.install == "npx":
         # `npx -y @scope/server-name@version` ensures a deterministic version.
+        # `server_args` (e.g., `--read-only`) follow the package spec.
         version_suffix = f"@{pin.npm_version}" if pin.npm_version else ""
         package = pin.package or pin.name
-        return StdioServerParameters(command="npx", args=["-y", f"{package}{version_suffix}"])
+        return StdioServerParameters(
+            command="npx",
+            args=["-y", f"{package}{version_suffix}", *pin.server_args],
+        )
     if pin.install in ("self-hosted", "npx-or-pip"):
         # Source-pinned servers are launched via their pip-installed entrypoint
         # (e.g., `mcp-server-git`). Name is the binary by convention.
-        return StdioServerParameters(command=pin.name, args=[])
+        # `server_args` are appended directly as the binary's argv.
+        return StdioServerParameters(command=pin.name, args=[*pin.server_args])
     if pin.install == "docker":
         # `docker run --rm -i <image>@sha256:<hex>` — digest-pinned reference.
         # A bare sha256 is not addressable; the repo prefix is required.
@@ -275,6 +288,10 @@ def stdio_params_for(pin: PinnedServer) -> Any:
         for env_name in pin.env_passthrough:
             args.extend(["-e", env_name])
         args.append(image_ref)
+        # Anything after `image_ref` is the container entrypoint's argv.
+        # `server_args` lands here so flags like `--toolsets=repos` reach the
+        # MCP server binary inside the container, not docker itself.
+        args.extend(pin.server_args)
         return StdioServerParameters(command="docker", args=args, env=env)
     raise ServerInstallError(f"{pin.name}: unsupported install type {pin.install!r}")
 
