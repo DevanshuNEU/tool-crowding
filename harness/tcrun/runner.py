@@ -180,6 +180,7 @@ class AgentRunner:
         model_provider: str,
         oracle_version: str,
         harness_version: str,
+        run_dir: Path | None = None,
     ):
         self._harness = harness
         self._sessions = pool_sessions
@@ -190,6 +191,7 @@ class AgentRunner:
         self._model_provider = model_provider
         self._oracle_version = oracle_version
         self._harness_version = harness_version
+        self._run_dir = Path(run_dir) if run_dir is not None else None
 
     async def run_trial(self, cell: CellSpec, query: Query) -> Trial:
         inputs = self._build_inputs(cell, query)
@@ -201,6 +203,11 @@ class AgentRunner:
         # downstream RNG that takes an int seed gets a deterministic value
         # derived from the same chain. Same cell+rep → same int.
         seed_int = int(cell.trial_seed[:8], 16)
+        trace_path = (
+            str(self._run_dir / "traces" / f"{cell.trial_id}.jsonl")
+            if self._run_dir is not None
+            else ""
+        )
         return TrialInputs(
             run_id=cell.run_id,
             cell_id=cell.cell_id,
@@ -226,6 +233,7 @@ class AgentRunner:
             env=self._env,
             embedder_spec=self._embedder_spec,
             retriever_top_k=cfg.retriever_top_k,
+            trace_path=trace_path,
         )
 
 
@@ -241,6 +249,7 @@ def make_default_agent_factory(
     anthropic_client: Any | None = None,
     embedder: Embedder | None = None,
     harness_version: str | None = None,
+    run_dir: Path | None = None,
 ) -> Callable[[dict[str, ServerSession], dict | None], AgentRunner]:
     """Build the orchestrator's agent_factory.
 
@@ -300,6 +309,7 @@ def make_default_agent_factory(
             model_provider=model_provider,
             oracle_version=oracle_version,
             harness_version=h_version,
+            run_dir=run_dir,
         )
 
     return agent_factory

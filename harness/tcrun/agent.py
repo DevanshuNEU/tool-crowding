@@ -204,6 +204,12 @@ class AgentHarness:
         client = self._client or _new_async_anthropic()
         messages = [{"role": "user", "content": inputs.task_query}]
         system_prompt = _build_system_prompt(nonce, inputs.task_query)
+        # Trial schema field always has a path (for documentation), but the
+        # actual file is only written when inputs.trace_path is explicitly set.
+        # Empty trace_path = trace-writing disabled; the schema-side fallback
+        # keeps row provenance readable but commits to no disk side effect.
+        effective_trace_path = _effective_trace_path(inputs)
+        trace_file = _open_trace_file(inputs.trace_path, inputs)
 
         tool_calls: list[ToolCall] = []
         first_correct_step: int | None = None
@@ -215,101 +221,132 @@ class AgentHarness:
         final_text = ""
 
         try:
-            for turn in range(self.max_turns):
-                response = await _invoke_api(
-                    client, inputs, system_prompt, messages, tools_manifest
-                )
-                _assert_cache_cold(response, inputs.trial_id)  # F18
-                u = getattr(response, "usage", None)
-                if u is not None:
-                    in_tokens += int(getattr(u, "input_tokens", 0) or 0)
-                    out_tokens += int(getattr(u, "output_tokens", 0) or 0)
-                stop_reason = getattr(response, "stop_reason", None)
-                blocks = list(getattr(response, "content", []) or [])
-                assistant_text_blocks: list[Any] = []
-                tool_use_blocks: list[Any] = []
-                for b in blocks:
-                    btype = getattr(b, "type", None) or (b.get("type") if isinstance(b, dict) else None)
-                    if btype == "text":
-                        assistant_text_blocks.append(b)
-                        text_val = getattr(b, "text", None)
-                        if text_val is None and isinstance(b, dict):
-                            text_val = b.get("text", "")
-                        final_text = text_val or final_text
-                    elif btype == "tool_use":
-                        tool_use_blocks.append(b)
-                if not tool_use_blocks:
-                    break
-                # Echo assistant turn back into messages
-                messages.append({"role": "assistant", "content": blocks})
-                tool_results_content: list[dict[str, Any]] = []
-                for tu in tool_use_blocks:
-                    step_idx = len(tool_calls) + 1
-                    name = getattr(tu, "name", None) or (tu.get("name") if isinstance(tu, dict) else "")
-                    raw_args = getattr(tu, "input", None) or (tu.get("input") if isinstance(tu, dict) else {})
-                    args = raw_args if isinstance(raw_args, dict) else {}
-                    tu_id = getattr(tu, "id", None) or (tu.get("id") if isinstance(tu, dict) else f"call_{step_idx}")
-                    call_record, content_for_model, was_fake = await self._dispatch_tool_call(
-                        step_idx=step_idx,
-                        tool_name=name,
-                        args=args,
-                        inputs=inputs,
-                        fake_tool_names=fake_tool_names,
+            try:
+                for turn in range(self.max_turns):
+                    response = await _invoke_api(
+                        client, inputs, system_prompt, messages, tools_manifest
                     )
-                    tool_calls.append(call_record)
-                    if was_fake:
-                        fake_tool_invoked = True
-                    if (first_correct_step is None and call_record.was_valid
-                            and not call_record.was_hallucinated and call_record.error is None):
-                        first_correct_step = call_record.step_idx
-                    tool_results_content.append({
-                        "type": "tool_result",
-                        "tool_use_id": tu_id,
-                        "content": content_for_model,
-                        "is_error": call_record.error is not None,
-                    })
-                messages.append({"role": "user", "content": tool_results_content})
-                if stop_reason == "end_turn":
-                    break
-            else:
-                error_type = "agent_gave_up"
-                error_detail = f"max_turns={self.max_turns} exhausted"
-        except CacheLeakHalt:
-            raise  # halt the orchestrator per F18
-        except APIFault as e:
-            error_type = "api_fault"
-            error_detail = str(e)
-        except ServerFault as e:
-            error_type = "server_fault"
-            error_detail = str(e)
-        except (asyncio.TimeoutError, TimeoutError) as e:
-            error_type = "latency_timeout"
-            error_detail = str(e) or "timeout"
-        except Exception:  # F13: re-raise so orchestrator halts (SPEC.md §7).
-            # Anything not in (CacheLeakHalt, APIFault, ServerFault, TimeoutError)
-            # is a persistent failure: retry/categorize returns "persistent_failure"
-            # for unknown classes, and the orchestrator's _run_trial_with_sem raises
-            # OrchestratorHalt on that category. Swallowing into error_type="harness_bug"
-            # and returning a Trial would let the run continue marking false-completions
-            # for every cell — see 2026-05-26 smoke (5/5 trials "completed" with
-            # cost_usd=0 after anthropic.AuthenticationError on the first API call).
-            logger.exception("uncaught exception in agent loop")
-            raise
-
-        passed = False
-        if error_type == "none":
-            # Oracle failures are F13-class (the oracle is part of the harness,
-            # not the SUT); re-raise to let the orchestrator halt rather than
-            # writing a row claiming the trial finished cleanly.
-            passed = bool(self._oracle(final_text, inputs))
-            if not passed and error_type == "none":
-                # Classify wrong_tool vs wrong_answer vs agent_gave_up.
-                if first_correct_step is None and not tool_calls:
-                    error_type = "agent_gave_up"
-                elif first_correct_step is None:
-                    error_type = "wrong_tool"
+                    _assert_cache_cold(response, inputs.trial_id)  # F18
+                    u = getattr(response, "usage", None)
+                    turn_in = int(getattr(u, "input_tokens", 0) or 0) if u is not None else 0
+                    turn_out = int(getattr(u, "output_tokens", 0) or 0) if u is not None else 0
+                    in_tokens += turn_in
+                    out_tokens += turn_out
+                    stop_reason = getattr(response, "stop_reason", None)
+                    blocks = list(getattr(response, "content", []) or [])
+                    assistant_text_blocks: list[Any] = []
+                    tool_use_blocks: list[Any] = []
+                    turn_text_blocks: list[str] = []
+                    for b in blocks:
+                        btype = getattr(b, "type", None) or (b.get("type") if isinstance(b, dict) else None)
+                        if btype == "text":
+                            assistant_text_blocks.append(b)
+                            text_val = getattr(b, "text", None)
+                            if text_val is None and isinstance(b, dict):
+                                text_val = b.get("text", "")
+                            if text_val:
+                                turn_text_blocks.append(text_val)
+                            final_text = text_val or final_text
+                        elif btype == "tool_use":
+                            tool_use_blocks.append(b)
+                    turn_tool_names = [
+                        (getattr(tu, "name", None) or (tu.get("name") if isinstance(tu, dict) else "")) or ""
+                        for tu in tool_use_blocks
+                    ]
+                    _write_trace_turn(
+                        trace_file,
+                        turn_idx=turn,
+                        stop_reason=stop_reason,
+                        text_blocks=turn_text_blocks,
+                        tool_use_names=turn_tool_names,
+                        input_tokens=turn_in,
+                        output_tokens=turn_out,
+                    )
+                    if not tool_use_blocks:
+                        break
+                    # Echo assistant turn back into messages
+                    messages.append({"role": "assistant", "content": blocks})
+                    tool_results_content: list[dict[str, Any]] = []
+                    for tu in tool_use_blocks:
+                        step_idx = len(tool_calls) + 1
+                        name = getattr(tu, "name", None) or (tu.get("name") if isinstance(tu, dict) else "")
+                        raw_args = getattr(tu, "input", None) or (tu.get("input") if isinstance(tu, dict) else {})
+                        args = raw_args if isinstance(raw_args, dict) else {}
+                        tu_id = getattr(tu, "id", None) or (tu.get("id") if isinstance(tu, dict) else f"call_{step_idx}")
+                        call_record, content_for_model, was_fake = await self._dispatch_tool_call(
+                            step_idx=step_idx,
+                            tool_name=name,
+                            args=args,
+                            inputs=inputs,
+                            fake_tool_names=fake_tool_names,
+                        )
+                        tool_calls.append(call_record)
+                        if was_fake:
+                            fake_tool_invoked = True
+                        if (first_correct_step is None and call_record.was_valid
+                                and not call_record.was_hallucinated and call_record.error is None):
+                            first_correct_step = call_record.step_idx
+                        tool_results_content.append({
+                            "type": "tool_result",
+                            "tool_use_id": tu_id,
+                            "content": content_for_model,
+                            "is_error": call_record.error is not None,
+                        })
+                    messages.append({"role": "user", "content": tool_results_content})
+                    if stop_reason == "end_turn":
+                        break
                 else:
-                    error_type = "wrong_answer"
+                    error_type = "agent_gave_up"
+                    error_detail = f"max_turns={self.max_turns} exhausted"
+            except CacheLeakHalt:
+                raise  # halt the orchestrator per F18
+            except APIFault as e:
+                error_type = "api_fault"
+                error_detail = str(e)
+            except ServerFault as e:
+                error_type = "server_fault"
+                error_detail = str(e)
+            except (asyncio.TimeoutError, TimeoutError) as e:
+                error_type = "latency_timeout"
+                error_detail = str(e) or "timeout"
+            except Exception:  # F13: re-raise so orchestrator halts (SPEC.md §7).
+                # Anything not in (CacheLeakHalt, APIFault, ServerFault, TimeoutError)
+                # is a persistent failure: retry/categorize returns "persistent_failure"
+                # for unknown classes, and the orchestrator's _run_trial_with_sem raises
+                # OrchestratorHalt on that category. Swallowing into error_type="harness_bug"
+                # and returning a Trial would let the run continue marking false-completions
+                # for every cell — see 2026-05-26 smoke (5/5 trials "completed" with
+                # cost_usd=0 after anthropic.AuthenticationError on the first API call).
+                logger.exception("uncaught exception in agent loop")
+                raise
+
+            passed = False
+            if error_type == "none":
+                # Oracle failures are F13-class (the oracle is part of the harness,
+                # not the SUT); re-raise to let the orchestrator halt rather than
+                # writing a row claiming the trial finished cleanly.
+                passed = bool(self._oracle(final_text, inputs))
+                if not passed and error_type == "none":
+                    # Classify wrong_tool vs wrong_answer vs agent_gave_up.
+                    if first_correct_step is None and not tool_calls:
+                        error_type = "agent_gave_up"
+                    elif first_correct_step is None:
+                        error_type = "wrong_tool"
+                    else:
+                        error_type = "wrong_answer"
+        finally:
+            _write_trace_end(
+                trace_file,
+                final_text=final_text,
+                error_type=error_type,
+                error_detail=error_detail,
+                passed=locals().get("passed", False),
+                total_input_tokens=in_tokens,
+                total_output_tokens=out_tokens,
+                tool_call_count=len(tool_calls),
+                first_correct_tool_step=first_correct_step,
+            )
+            _close_trace_file(trace_file)
 
         finished_at = datetime.now(timezone.utc)
         env_ref = _to_env_ref(inputs.env)
@@ -345,7 +382,7 @@ class AgentHarness:
             "is_padded_n1": inputs.is_padded_n1,
             "fake_tool_invoked": fake_tool_invoked,
             "padding_skipped": padding_skipped,
-            "trace_path": inputs.trace_path or f"results/{inputs.run_id}/traces/{inputs.trial_id}.jsonl",
+            "trace_path": effective_trace_path,
             "seed": inputs.seed,
             "oracle_version": inputs.oracle_version,
             "env": env_ref,
@@ -517,6 +554,118 @@ class AgentHarness:
 # ---------------------------------------------------------------------------
 
 
+def _effective_trace_path(inputs: TrialInputs) -> str:
+    """Resolve where to write the per-trial trace. Empty inputs.trace_path
+    falls back to a relative path matching the Trial.trace_path schema field
+    so debugging-after-the-fact still has a stable default location.
+    """
+    return inputs.trace_path or f"results/{inputs.run_id}/traces/{inputs.trial_id}.jsonl"
+
+
+def _open_trace_file(trace_path: str, inputs: TrialInputs) -> Any:
+    """Open the per-trial JSONL trace and write the trial_meta header.
+
+    Returns the file handle, or None on any I/O error (tracing is best-effort
+    diagnostic output; never halt a trial because the trace can't be written).
+    """
+    if not trace_path:
+        return None
+    try:
+        p = Path(trace_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        f = p.open("w", encoding="utf-8")
+        meta = {
+            "record_type": "trial_meta",
+            "trial_id": inputs.trial_id,
+            "cell_id": inputs.cell_id,
+            "run_id": inputs.run_id,
+            "task_id": inputs.task_id,
+            "task_query": inputs.task_query,
+            "primary_server": inputs.primary_server,
+            "model_snapshot_id": inputs.model_snapshot_id,
+            "harness_version": inputs.harness_version,
+            "is_padded_n1": inputs.is_padded_n1,
+            "tool_listing_strategy": inputs.tool_listing_strategy,
+        }
+        f.write(json.dumps(meta) + "\n")
+        f.flush()
+        return f
+    except OSError as e:
+        logger.warning("could not open trace file %r: %s", trace_path, e)
+        return None
+
+
+def _write_trace_turn(
+    trace_file: Any,
+    *,
+    turn_idx: int,
+    stop_reason: str | None,
+    text_blocks: list[str],
+    tool_use_names: list[str],
+    input_tokens: int,
+    output_tokens: int,
+) -> None:
+    """Append a per-turn record. No-op when trace_file is None."""
+    if trace_file is None:
+        return
+    try:
+        rec = {
+            "record_type": "turn",
+            "turn_idx": turn_idx,
+            "stop_reason": stop_reason,
+            "text_blocks": text_blocks,
+            "tool_use_names": tool_use_names,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+        trace_file.write(json.dumps(rec) + "\n")
+        trace_file.flush()
+    except OSError as e:
+        logger.warning("could not write trace turn %d: %s", turn_idx, e)
+
+
+def _write_trace_end(
+    trace_file: Any,
+    *,
+    final_text: str,
+    error_type: str,
+    error_detail: str | None,
+    passed: bool,
+    total_input_tokens: int,
+    total_output_tokens: int,
+    tool_call_count: int,
+    first_correct_tool_step: int | None,
+) -> None:
+    """Append the trial_end record summarising the trial outcome."""
+    if trace_file is None:
+        return
+    try:
+        rec = {
+            "record_type": "trial_end",
+            "final_text": final_text,
+            "error_type": error_type,
+            "error_detail": error_detail,
+            "passed": passed,
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "tool_call_count": tool_call_count,
+            "first_correct_tool_step": first_correct_tool_step,
+        }
+        trace_file.write(json.dumps(rec) + "\n")
+        trace_file.flush()
+    except OSError as e:
+        logger.warning("could not write trace_end: %s", e)
+
+
+def _close_trace_file(trace_file: Any) -> None:
+    if trace_file is None:
+        return
+    try:
+        trace_file.close()
+    except OSError as e:
+        logger.warning("could not close trace file: %s", e)
+
+
 def _per_trial_nonce(trial_id: str) -> str:
     """32-byte hex per SPEC.md §5 rule 4 + F18.
 
@@ -528,11 +677,21 @@ def _per_trial_nonce(trial_id: str) -> str:
 
 
 def _build_system_prompt(nonce: str, query: str) -> str:
+    # The "stop calling tools once you have the answer" clause is load-bearing.
+    # Without it, Sonnet 4.6 in agent mode emits >=1 tool_use per turn for all
+    # MAX_TURNS turns even after retrieving the correct file (verified
+    # 2026-05-27 against github-smoke-001; agent_gave_up rate = 4/4 with
+    # first_correct_tool_step=1 and ~22 redundant tool calls per trial).
     return (
         f"<nonce>{nonce}</nonce>\n"
-        "You are a code-retrieval assistant. Use the available tools to find the "
-        "code snippet that answers the user's query. Reply with the snippet as plain "
-        "text. Do not invent tool names."
+        "You are a code-retrieval assistant. Use the available tools to find "
+        "the code snippet that answers the user's query.\n"
+        "\n"
+        "When you have located the snippet, reply with the snippet as plain "
+        "text and stop calling tools. Do not call additional tools to "
+        "double-check or explore further once you have an answer.\n"
+        "\n"
+        "Do not invent tool names."
     )
 
 

@@ -73,11 +73,17 @@ def run(
     except Exception as e:
         typer.echo(f"task load failed: {e}", err=True)
         raise typer.Exit(code=2)
+    # Resolve run_dir up front so the agent factory writes traces alongside
+    # trials.jsonl. compute_run_id is idempotent so calling it here + inside
+    # Orchestrator yields the same path.
+    from tcrun.config import compute_run_id
+    run_dir = Path(cfg.out) / compute_run_id(cfg)
     orchestrator = Orchestrator(
         cfg,
+        run_dir=run_dir,
         queries=queries,
         pool_factory=make_default_pool_factory(cfg),
-        agent_factory=make_default_agent_factory(cfg),
+        agent_factory=make_default_agent_factory(cfg, run_dir=run_dir),
     )
     summary = asyncio.run(orchestrator.run())
     typer.echo(json.dumps(summary, indent=2))
@@ -101,7 +107,7 @@ def resume(run_id: str = typer.Argument(..., help="run_id to resume")) -> None:
         run_dir=run_dir,
         queries=queries,
         pool_factory=make_default_pool_factory(cfg),
-        agent_factory=make_default_agent_factory(cfg),
+        agent_factory=make_default_agent_factory(cfg, run_dir=run_dir),
     )
     summary = asyncio.run(orchestrator.run())
     typer.echo(json.dumps(summary, indent=2))

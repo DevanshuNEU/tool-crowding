@@ -59,7 +59,10 @@ def _inputs(**overrides) -> TrialInputs:
         model_snapshot_id="claude-sonnet-4-6-20260315",
         sampling_params=SamplingParams(),
         env=_fp(),
-        trace_path="results/r0/traces/t0.jsonl",
+        # Default empty so the harness skips trace-file writing (CWD-polluting
+        # otherwise). The test_trace_file_written_on_run_trial case opts in by
+        # passing an explicit tmp_path-rooted trace_path.
+        trace_path="",
     )
     base.update(overrides)
     return TrialInputs(**base)
@@ -277,8 +280,62 @@ def test_system_prompt_embeds_nonce():
     assert "<nonce>abc123</nonce>" in prompt
 
 
+def test_system_prompt_includes_stop_instruction():
+    """Regression-lock the 'stop calling tools once you have the answer' clause.
+
+    Reason: 2026-05-27 github-smoke-001 showed Sonnet 4.6 looping for all
+    MAX_TURNS turns with first_correct_tool_step=1 because the original prompt
+    didn't tell the model when to stop. Removing this clause re-introduces the
+    $0.50/trial cost ceiling overrun on the Stage 1 kill gate.
+    """
+    prompt = _build_system_prompt("abc123", "find foo")
+    assert "stop calling tools" in prompt.lower()
+    assert "do not invent tool names" in prompt.lower()
+
+
 def test_estimate_cost_usd_is_positive():
     assert _estimate_cost_usd(1000, 100) > 0.0
+
+
+@pytest.mark.asyncio
+async def test_trace_file_written_on_run_trial(tmp_path):
+    """run_trial writes a JSONL trace with trial_meta, turn, and trial_end records."""
+    import json as _json
+    trace_path = tmp_path / "traces" / "t0.jsonl"
+    client = _client_returning(_api_response("here is the answer"))
+    harness = AgentHarness(anthropic_client=client, oracle=lambda t, i: True)
+    inputs = _inputs(
+        sessions={"oci": _session_with(["search"])},
+        trace_path=str(trace_path),
+    )
+    trial = await harness.run_trial(inputs)
+    assert trace_path.exists()
+    records = [_json.loads(line) for line in trace_path.read_text().splitlines() if line.strip()]
+    # Must include trial_meta header, at least one turn, and trial_end footer.
+    types = [r["record_type"] for r in records]
+    assert types[0] == "trial_meta"
+    assert types[-1] == "trial_end"
+    assert "turn" in types
+    meta = records[0]
+    assert meta["trial_id"] == "t0"
+    assert meta["task_id"] == "v1-pub-001"
+    assert meta["task_query"] == "find function that parses yaml"
+    end = records[-1]
+    assert end["passed"] is True
+    assert end["error_type"] == "none"
+    # Trial schema field matches the actual write path.
+    assert trial.trace_path == str(trace_path)
+
+
+@pytest.mark.asyncio
+async def test_trace_file_skipped_when_path_empty(tmp_path, monkeypatch):
+    """Empty trace_path disables trace writing entirely (no CWD pollution)."""
+    monkeypatch.chdir(tmp_path)
+    client = _client_returning(_api_response("here is the answer"))
+    harness = AgentHarness(anthropic_client=client, oracle=lambda t, i: True)
+    await harness.run_trial(_inputs(sessions={"oci": _session_with(["search"])}))
+    # Default trace_path is "" in test inputs → no file written under CWD.
+    assert list(tmp_path.rglob("*.jsonl")) == []
 
 
 # ---------------------------------------------------------------------------
