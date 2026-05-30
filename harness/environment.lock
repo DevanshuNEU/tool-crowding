@@ -7,10 +7,10 @@
     "mcp/sqlite": "sha256:efbc05ccace18df122f26b674bd1730c76ece716551df2b3961d519909c34696",
     "mcp/time": "sha256:9c46a918633fb474bf8035e3ee90ebac6bcf2b18ccb00679ac4c179cba0ebfcf"
   },
-  "harness_git_sha": "a857612f5de896ca19169085924e2c24f6e39f26",
+  "harness_git_sha": "d1f85aa0e68699949984f5cf88767178b0af09da",
   "os": "macOS-15.0.1-arm64-arm-64bit-Mach-O",
   "pip_freeze": [
-    "-e git+ssh://git@github.com/DevanshuNEU/tool-crowding.git@a857612f5de896ca19169085924e2c24f6e39f26#egg=tool_crowding&subdirectory=harness",
+    "-e git+ssh://git@github.com/DevanshuNEU/tool-crowding.git@d1f85aa0e68699949984f5cf88767178b0af09da#egg=tool_crowding&subdirectory=harness",
     "PyJWT==2.13.0",
     "PyYAML==6.0.3",
     "Pygments==2.20.0",
