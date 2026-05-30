@@ -69,6 +69,19 @@ def _make_client_session(session_obj):
     return _FakeClientSession
 
 
+class _FakeHttpCtx:
+    """Async ctx mgr matching streamablehttp_client(url) shape (3-tuple)."""
+
+    def __init__(self, *_a, **_kw):
+        pass
+
+    async def __aenter__(self):
+        return (MagicMock(), MagicMock(), MagicMock())  # (read, write, get_session_id)
+
+    async def __aexit__(self, *a):
+        return False
+
+
 def _fake_pin(
     name: str = "git_mcp",
     install: str = "npx",
@@ -257,6 +270,37 @@ def test_snapshot_server_descriptions_collects_and_sorts_tools(tmp_path: Path):
     assert entry["install"] == "npx"
     assert entry["pin"] == "lock-hash-abc"  # npm_lock_hash from _fake_pin
     assert [t["name"] for t in entry["tools"]] == ["a_tool", "b_tool"]
+
+
+def test_snapshot_server_descriptions_handles_hosted_http():
+    """Hosted-HTTP pins route through streamablehttp_client, not stdio_params_for."""
+    fake_result = SimpleNamespace(
+        tools=[SimpleNamespace(name="ask_question", description="Q", inputSchema={"type": "object"})]
+    )
+
+    class _FakeSession:
+        async def initialize(self):
+            return None
+
+        async def list_tools(self):
+            return fake_result
+
+    pin = PinnedServer(
+        name="deepwiki",
+        description="d",
+        install="hosted-http",
+        auth="none",
+        url="https://mcp.example.com/mcp",
+        snapshot_sha256="sha256:abc",
+    )
+    with patch("tcrun.snapshot.streamablehttp_client", _FakeHttpCtx), patch(
+        "tcrun.snapshot.ClientSession", _make_client_session(_FakeSession())
+    ):
+        entry = asyncio.run(snapshot_server_descriptions(pin))
+
+    assert entry["server_name"] == "deepwiki"
+    assert entry["install"] == "hosted-http"
+    assert [t["name"] for t in entry["tools"]] == ["ask_question"]
 
 
 def test_snapshot_server_descriptions_handles_empty_tool_list():

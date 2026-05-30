@@ -46,9 +46,11 @@ from tcrun.servers import (
     ClientSession,
     McpError,
     PinnedServer,
+    hosted_http_params_for,
     load_pinned_servers,
     stdio_client,
     stdio_params_for,
+    streamablehttp_client,
 )
 
 log = logging.getLogger(__name__)
@@ -303,17 +305,42 @@ async def snapshot_server_descriptions(
     so the cause survives in tracebacks while `snapshot_all_descriptions` gets
     a human-readable reason string. Cancellations propagate unchanged.
     """
-    if stdio_client is None or ClientSession is None:
+    if ClientSession is None:
         raise SnapshotError(
             "mcp package not installed; cannot snapshot server descriptions"
         )
-    params = stdio_params_for(pin)
     async with AsyncExitStack() as stack:
-        read_w, write_w = await _await_classified(
-            stack.enter_async_context(stdio_client(params)),
-            pin_name=pin.name,
-            stage="failed to spawn subprocess",
-        )
+        if pin.install == "hosted-http":
+            # Mirror ServerPoolManager._spawn_one's hosted-http branch so the
+            # snapshot/validation path covers Streamable-HTTP servers (deepwiki)
+            # instead of rejecting them in stdio_params_for. No snapshot-integrity
+            # gate here: this path captures live tool descriptions, the run path
+            # enforces verify_snapshot_integrity.
+            if streamablehttp_client is None:
+                raise SnapshotError(
+                    "mcp.client.streamable_http not installed; cannot snapshot "
+                    "hosted-http servers"
+                )
+            # streamablehttp_client yields (read, write, get_session_id); stdio
+            # yields (read, write). Index defensively so both shapes work.
+            transport = await _await_classified(
+                stack.enter_async_context(
+                    streamablehttp_client(hosted_http_params_for(pin).url)
+                ),
+                pin_name=pin.name,
+                stage="failed to open hosted-http transport",
+            )
+            read_w, write_w = transport[0], transport[1]
+        else:
+            if stdio_client is None:
+                raise SnapshotError(
+                    "mcp package not installed; cannot snapshot server descriptions"
+                )
+            read_w, write_w = await _await_classified(
+                stack.enter_async_context(stdio_client(stdio_params_for(pin))),
+                pin_name=pin.name,
+                stage="failed to spawn subprocess",
+            )
         session = await _await_classified(
             stack.enter_async_context(ClientSession(read_w, write_w)),
             pin_name=pin.name,

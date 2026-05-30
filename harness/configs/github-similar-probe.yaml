@@ -1,0 +1,64 @@
+# configs/github-similar-probe.yaml — composition / similarity probe (2026-05-30)
+#
+# PURPOSE: test the composition hypothesis. The N=6 dissimilar probe (a49638ca)
+# was a clean null: 5 semantically-distant servers (time/sqlite/fetch/...) caused
+# zero interference. This config swaps in SIMILAR distractors that genuinely
+# compete with github_mcp's code/repo-retrieval domain, at LOWER N. If a few
+# similar servers interfere where many dissimilar ones did not, composition
+# (description similarity) >> raw count.
+#
+# Distractors (all validated to spawn, all in pool/descriptions.json):
+#   - deepwiki        hosted-http GitHub-repo Q&A (read_wiki_contents, ask_question)
+#                     -> the genuine competitor; can plausibly answer the task too
+#   - filesystem_mcp  file read/search (read_file, search_files) overlaps
+#                     get_file_contents/search_code
+#   - git_mcp         repo ops (git_log, git_show) -- borderline similar
+#
+# N=4 = github_mcp + those 3. Same single query as the baselines. 5 orderings.
+#
+# RUN (next funded session): tcrun run -c configs/github-similar-probe.yaml --cost-cap 2.5
+# Est ~$1 (5 trials). Compare pass-rate / turns / which server gets called vs:
+#   - N=1 baseline (87f591cd): 5/5, 3 turns
+#   - N=6 dissimilar (a49638ca): 5/5, 2.4 turns, zero distractor calls
+#
+# PRE-RUN CHECK: deepwiki run path enforces verify_snapshot_integrity (the
+# snapshot bundle at server-pool/deepwiki-snapshot-2026-05-26). If the bundle is
+# missing/changed it F1-fails BEFORE any API spend (cheap). The live connection
+# itself is already validated ($0, 3 tools).
+#
+# CAVEAT: deepwiki may be able to ANSWER the task (not purely a distractor), so a
+# pass via deepwiki is a valid-but-different path. For a GO/NO-GO that is fine;
+# attribute primary_server carefully in any writeup.
+
+# Path-typed fields (content-hashed into run_id)
+task_set: tasks/github_smoke.jsonl
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - github_mcp
+
+distractors:
+  - deepwiki
+  - filesystem_mcp
+  - git_mcp
+
+N: [4]
+runs_per_cell: 1
+model: claude-sonnet-4-6
+host: claude-desktop
+seed: 42
+
+tool_listing_strategy: full
+include_padded_n1_control: false
+include_no_mcp_baseline: false
+include_random_tool_call_baseline: false
+ragmcp_replication: false
+
+out: results/similar-probe/
