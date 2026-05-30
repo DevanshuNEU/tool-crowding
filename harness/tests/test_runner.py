@@ -38,6 +38,7 @@ from tcrun.runner import (
     EndpointResolutionError,
     _difficulty_for,
     _load_endpoint_pin,
+    _load_oracle,
     _oracle_version_for,
     make_default_agent_factory,
     make_default_pool_factory,
@@ -81,7 +82,7 @@ def _build_config(
 ) -> Config:
     return Config(
         task_set=_write(tmp_path / "queries.jsonl", "{}"),
-        oracle=_write(tmp_path / "pass_v1.py", "def pass_criterion(*a): return True"),
+        oracle=_write(tmp_path / "pass_v1.py", "def pass_criterion_v1(*a): return True"),
         servers_pinned=_write(tmp_path / "servers.yaml", "{}"),
         descriptions=_write(tmp_path / "descriptions.json", "{}"),
         endpoints=_write_endpoints(tmp_path / "endpoints.json", model_id=model_id),
@@ -193,10 +194,31 @@ def test_difficulty_for_unknown_raises():
 
 
 def test_oracle_version_for_includes_sha256(tmp_path: Path):
-    p = _write(tmp_path / "pass_v1.py", "def pass_criterion(*a): return True")
+    p = _write(tmp_path / "pass_v1.py", "def pass_criterion_v1(*a): return True")
     v = _oracle_version_for(p)
     assert v.startswith("pass_v1.py@sha256:")
     assert len(v.split(":")[1]) == 64  # full sha256 hex
+
+
+def test_load_oracle_wires_real_v1_criterion():
+    """Bug D: _load_oracle imports the pinned oracle file and adapts it so a
+    snippet matching the ground truth passes and an unrelated one fails. Tested
+    against the real production oracle, not a stub."""
+    real_oracle = Path(__file__).resolve().parents[1] / "tcrun" / "oracles" / "pass_v1.py"
+    oracle_fn = _load_oracle(real_oracle)
+    inputs = SimpleNamespace(
+        ground_truth_target="visit_call",
+        ground_truth_code="def visit_call(self, node): return None",
+    )
+    assert oracle_fn("here it is: def visit_call(self, node): return None", inputs) is True
+    assert oracle_fn("totally unrelated prose with no symbol", inputs) is False
+
+
+def test_load_oracle_raises_on_missing_entry_point(tmp_path: Path):
+    """A file lacking pass_criterion_v1 fails loud at wire-up, not at first trial."""
+    bad = _write(tmp_path / "bad_oracle.py", "x = 1\n")
+    with pytest.raises(RuntimeError, match="pass_criterion_v1"):
+        _load_oracle(bad)
 
 
 # ---------------------------------------------------------------------------

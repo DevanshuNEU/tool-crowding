@@ -691,3 +691,27 @@ def test_write_trace_turn_includes_tool_use_args():
     )
     rec = _json.loads(buf.getvalue())
     assert rec["tool_use_args"] == [{"owner": "o", "repo": "r", "path": "p"}]
+
+
+def test_ground_truth_never_reaches_the_model():
+    """Contamination invariant (Bug D): ground_truth_* on TrialInputs must never
+    appear in the system prompt or any message sent to the model. Only
+    task_query and the tools manifest are model-facing."""
+    sentinel = "GROUND_TRUTH_SENTINEL_ZZZ"
+    captured: dict = {}
+
+    async def create(**kw):
+        captured["system"] = kw.get("system", "")
+        captured["messages"] = kw.get("messages", [])
+        return _api_response("done", stop_reason="end_turn")
+
+    client = SimpleNamespace(messages=SimpleNamespace(create=create))
+    harness = AgentHarness(anthropic_client=client, oracle=lambda t, i: False, max_turns=2)
+    inputs = _inputs(
+        sessions={"oci": _session_with(["search"])},
+        ground_truth_target=sentinel,
+        ground_truth_code=sentinel + " def secret(): ...",
+    )
+    asyncio.run(harness.run_trial(inputs))
+    blob = str(captured.get("system", "")) + str(captured.get("messages", []))
+    assert sentinel not in blob

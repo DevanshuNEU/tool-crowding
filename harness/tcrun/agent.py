@@ -110,6 +110,13 @@ class TrialInputs:
     tool_listing_strategy: str = "full"
     pass_criterion_id: str = "symbol-plus-50pct-overlap-v1"
 
+    # Ground truth for the oracle ONLY. CONTAMINATION INVARIANT: these must
+    # NEVER reach the model. The agent loop sends only task_query (via
+    # _build_system_prompt + messages[0]) and the tools manifest; _invoke_api
+    # never serializes TrialInputs. test_ground_truth_never_in_prompt locks this.
+    ground_truth_target: str = ""
+    ground_truth_code: str = ""
+
     # Sessions (from ServerPoolManager.start)
     sessions: dict[str, Any] = field(default_factory=dict)
 

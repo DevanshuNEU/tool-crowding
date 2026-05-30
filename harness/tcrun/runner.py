@@ -124,6 +124,44 @@ def _oracle_version_for(oracle_path: Path | str) -> str:
     return f"{p.name}@sha256:{file_sha256(p)}"
 
 
+def _load_oracle(oracle_path: Path | str) -> Callable[[str, TrialInputs], bool]:
+    """Load the pinned oracle file and adapt it to the harness OracleFn shape.
+
+    Bug D fix: the harness scores via `oracle(returned_snippet, inputs)`, but the
+    v1 criterion (`oracles/pass_v1.py::pass_criterion_v1`) takes
+    `(returned_snippet, ground_truth_symbol, ground_truth_code)`. This loader
+    imports the same file whose SHA is recorded in `oracle_version` and returns
+    an adapter that pulls the ground truth off `TrialInputs`. Without this the
+    factory left `AgentHarness` on its always-False default oracle, so every
+    production trial scored `pass=False` regardless of correctness.
+
+    Loud failure: a missing file or missing `pass_criterion_v1` entry point
+    raises here at wire-up, not silently at first trial.
+    """
+    import importlib.util
+
+    p = Path(oracle_path)
+    spec = importlib.util.spec_from_file_location(f"tcrun_oracle_{p.stem}", p)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load oracle module from {p}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    criterion = getattr(module, "pass_criterion_v1", None)
+    if not callable(criterion):
+        raise RuntimeError(f"oracle {p} does not export a callable pass_criterion_v1")
+
+    def _oracle(returned_snippet: str, inputs: TrialInputs) -> bool:
+        return bool(
+            criterion(
+                returned_snippet,
+                inputs.ground_truth_target,
+                inputs.ground_truth_code,
+            )
+        )
+
+    return _oracle
+
+
 # ---------------------------------------------------------------------------
 # Default pool factory
 # ---------------------------------------------------------------------------
@@ -218,6 +256,8 @@ class AgentRunner:
             task_version="v1",
             task_difficulty=_difficulty_for(query.difficulty_quartile),
             task_query=query.text,
+            ground_truth_target=query.ground_truth_target,
+            ground_truth_code=query.ground_truth_code,
             primary_server=cell.primary_server,
             model_id=cfg.model,
             model_provider=self._model_provider,
@@ -277,6 +317,7 @@ def make_default_agent_factory(
     model_snapshot_id = endpoint["checkpoint_identifier"]
     model_provider = endpoint["provider"]
     oracle_version = _oracle_version_for(config.oracle)
+    oracle_fn = _load_oracle(config.oracle)
     fp = env if env is not None else capture_fingerprint()
     h_version = harness_version or (
         config.harness_version
@@ -299,6 +340,7 @@ def make_default_agent_factory(
             anthropic_client=anthropic_client,
             embedder=embedder,
             tool_result_char_cap=config.tool_result_char_cap,
+            oracle=oracle_fn,
         )
         return AgentRunner(
             harness=harness,
