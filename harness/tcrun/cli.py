@@ -59,6 +59,13 @@ def _find_run_dir(run_id: str, search_root: Path = Path("results")) -> Path:
 def run(
     config: Path = typer.Option(..., "--config", "-c", help="YAML config path"),
     skip_preflight: bool = typer.Option(False, "--skip-preflight", help="DEBUG only"),
+    cost_cap: float | None = typer.Option(
+        None,
+        "--cost-cap",
+        help="Hard USD ceiling; halt once a completed trial pushes the running "
+        "cost over this. Operational guardrail, NOT hashed into run_id. "
+        "Omit to use the 200.0 default.",
+    ),
 ) -> None:
     """Run a sweep per SPEC.md §8."""
     cfg = load_config(config)
@@ -84,6 +91,7 @@ def run(
         queries=queries,
         pool_factory=make_default_pool_factory(cfg),
         agent_factory=make_default_agent_factory(cfg, run_dir=run_dir),
+        cost_cap_usd=cost_cap,  # None -> Orchestrator's 200.0 fallback (unchanged when omitted)
     )
     summary = asyncio.run(orchestrator.run())
     typer.echo(json.dumps(summary, indent=2))

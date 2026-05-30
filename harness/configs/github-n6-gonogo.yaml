@@ -1,0 +1,51 @@
+# configs/github-n6-gonogo.yaml — N=1-vs-N=6 GO/NO-GO probe (2026-05-30)
+#
+# PURPOSE: cheapest test of whether discrimination interference EXISTS at all.
+# Same query + primary as the N=1 smoke (87f591cd…, 5/5 pass, 3 turns,
+# $0.159/trial). Adds 5 validated docker, no-auth distractors so the model
+# must discriminate github_mcp's tools from 5 competing toolsets.
+#
+# READ: compare pass-rate / turns / cost at N=6 against the N=1 baseline.
+#   drop / climb  -> interference is real (the hook)
+#   still 5/5 clean -> effect weak at this scale (kill-criterion-1 territory)
+#
+# This is a GO/NO-GO smell test (1 query x 5 orderings = 5 trials), NOT a
+# result. Run hard-capped: tcrun run -c configs/github-n6-gonogo.yaml --cost-cap 3.0
+
+# Path-typed fields (content-hashed into run_id)
+task_set: tasks/github_smoke.jsonl
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - github_mcp
+
+# 5 docker, no-auth, image-present distractors. Orchestrator takes the first
+# N-1 = 5 of these for N=6: [github_mcp, git_mcp, fetch_mcp,
+# sequential_thinking_mcp, time_mcp, sqlite_mcp].
+distractors:
+  - git_mcp
+  - fetch_mcp
+  - sequential_thinking_mcp
+  - time_mcp
+  - sqlite_mcp
+
+N: [6]
+runs_per_cell: 1
+model: claude-sonnet-4-6
+host: claude-desktop
+seed: 42
+
+tool_listing_strategy: full         # retriever-OFF: all 6 servers' tools listed
+include_padded_n1_control: false
+include_no_mcp_baseline: false
+include_random_tool_call_baseline: false
+ragmcp_replication: false
+
+out: results/n6-gonogo/

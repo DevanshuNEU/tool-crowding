@@ -112,6 +112,37 @@ def test_validate_subcommand(tmp_path: Path):
     assert "artifact_hashes" in out["gates"]
 
 
+def _patch_run_internals(monkeypatch):
+    """Stub the heavy run() collaborators so we can assert CLI wiring only."""
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr("tcrun.cli.load_tasks", lambda *a, **k: [])
+    monkeypatch.setattr("tcrun.cli.make_default_pool_factory", lambda *a, **k: MagicMock())
+    monkeypatch.setattr("tcrun.cli.make_default_agent_factory", lambda *a, **k: MagicMock())
+    monkeypatch.setattr("tcrun.cli.asyncio.run", lambda *a, **k: {"run_id": "stub"})
+    orch = MagicMock()
+    monkeypatch.setattr("tcrun.cli.Orchestrator", orch)
+    return orch
+
+
+def test_run_cost_cap_flag_reaches_orchestrator(tmp_path: Path, monkeypatch):
+    cfg_path = _write_config(tmp_path)
+    orch = _patch_run_internals(monkeypatch)
+    result = runner.invoke(
+        app, ["run", "--config", str(cfg_path), "--skip-preflight", "--cost-cap", "0.5"]
+    )
+    assert result.exit_code == 0, result.stdout
+    assert orch.call_args.kwargs["cost_cap_usd"] == 0.5
+
+
+def test_run_cost_cap_defaults_to_none_when_omitted(tmp_path: Path, monkeypatch):
+    cfg_path = _write_config(tmp_path)
+    orch = _patch_run_internals(monkeypatch)
+    result = runner.invoke(app, ["run", "--config", str(cfg_path), "--skip-preflight"])
+    assert result.exit_code == 0, result.stdout
+    assert orch.call_args.kwargs["cost_cap_usd"] is None
+
+
 def test_status_subcommand_reads_checkpoint(tmp_path: Path):
     """status walks results/<exp>/<run_id>/checkpoint.json layout."""
     run_id = "abc123"
