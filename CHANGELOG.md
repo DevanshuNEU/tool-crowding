@@ -4,6 +4,26 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Fixed — tool results now reach the model in full: EmbeddedResource unwrap + configurable result cap (2026-05-29)
+
+- **Corrected root cause (supersedes the 2026-05-28 "stop calling tools" diagnosis below).** Two paid github-smoke runs (2026-05-29) plus a zero-API MCP probe proved the `agent_gave_up` loop was **not** the model failing to stop after retrieving the answer. It was two harness-side bugs that meant the answer never reached the model: (1) `_flatten_tool_result` only read `block.text`, discarding `EmbeddedResource` blocks — and `github_mcp::get_file_contents` returns the file body as an `EmbeddedResource` (`resource.text`), with `block.text` carrying only a `"successfully downloaded … (SHA …)"` metadata line; (2) `_dispatch_tool_call` then truncated the result to a hard-coded 4,096 chars, and the smoke answer `def visit_call` sits at char **4,417**. The 2026-05-28 prompt clause moved per-trial cost only $0.527 → ~$0.49 (≈0%) because it treated a symptom that did not exist.
+- `_flatten_tool_result` (`tcrun/agent.py`) now unwraps `EmbeddedResource`: emits `resource.text`, or base64-decodes `resource.blob` for binary payloads, keeping the `TextContent` and `structuredContent` paths. Validated against the live server: `pylint-dev/pylint:README.rst` went from ~81 chars delivered (metadata only) to 9,803 (metadata + full body).
+- The 4,096-char truncation in `_dispatch_tool_call` is replaced by `self.tool_result_char_cap` (see Added below). `ToolCall.result_chars` records the full pre-cap length so a clipped result is visible in the audit row.
+- Tests: +2 flatten (`test_flatten_tool_result_unwraps_embedded_resource_text`, `…_decodes_base64_blob_resource`), +2 cap (`…_truncates_content_and_records_full_length`, `…_default_when_unset`).
+
+### Fixed — oracle scores even on max_turns exhaustion (Bug A) (2026-05-29)
+
+- `run_trial` (`tcrun/agent.py`) previously ran the oracle only when `error_type == "none"`; a trial that hit `max_turns` (`agent_gave_up`) was never scored and defaulted to `pass=False`, silently failing trials that emitted the correct answer before exhausting turns. The oracle now runs whenever `error_type in ("none", "agent_gave_up")`; on a pass it resets `error_type` to `"none"`. Transport failures (api_fault/server_fault/latency_timeout) still skip scoring since `final_text` is not trustworthy there. Test: `test_oracle_runs_on_max_turns_and_can_pass`.
+
+### Added — `tool_result_char_cap` config knob + observability fields (2026-05-29)
+
+- `Config.tool_result_char_cap: int` (default `DEFAULT_TOOL_RESULT_CHAR_CAP = 65536`), runtime-swappable via the `TC_TOOL_RESULT_CHAR_CAP` env var (resolved in `load_config`, mirrors the `TC_EMBEDDER` pattern) and value-hashed into `run_id`. Rationale + mandatory cap-sensitivity analysis documented in `design/TOOL_RESULT_CAP.md`. **Note: adding this field shifts all `run_id`s** (intended — it is a reproducibility-relevant parameter).
+- Observability: `ToolCall.result_chars` (full pre-cap result length) and a `tool_use_args` field on per-turn trace records. The github-smoke diagnosis was slowed because tool-call args were recorded as `{}` and result lengths were not captured; both gaps are now closed.
+
+### Known issue — production oracle is never wired (Bug D, discovered 2026-05-29, NOT yet fixed)
+
+- `make_default_agent_factory` (`tcrun/runner.py`) computes `oracle_version` (the SHA of `config.oracle` for provenance) but constructs `AgentHarness` **without** an `oracle=`, so `self._oracle` falls back to `_default_oracle_falsey` (always `False`). In production every trial scores `pass=False` regardless of correctness; `oracles/pass_v1.py` is hashed but never executed. Multi-layer fix required: (1) load the oracle callable from `config.oracle`; (2) adapter for the signature mismatch (`pass_criterion_v1(snippet, gt_symbol, gt_code)` vs the harness `oracle(text, inputs)`); (3) thread `ground_truth_target`/`ground_truth_code` from `tasks.py` into `TrialInputs` (currently absent); (4) guarantee the ground truth does not leak into the prompt (contamination risk). Deferred to a focused, methodology-reviewed pass.
+
 ### Fixed — agent system prompt now instructs the model to stop calling tools after locating the snippet (2026-05-28)
 
 - `_build_system_prompt` (`tcrun/agent.py`) gains an explicit stopping clause: "When you have located the snippet, reply with the snippet as plain text and stop calling tools. Do not call additional tools to double-check or explore further once you have an answer." Without this clause Sonnet 4.6 in agent mode emits at least one `tool_use` block on every turn for all `MAX_TURNS=16` iterations even after `first_correct_tool_step=1`, producing `error_type=agent_gave_up` on trials that retrieved the correct file by step 5-7. Verified against the 4 trials in `harness/results/github-smoke-001/6fb1189d.../trials.jsonl` (2026-05-27 PM): all four hit `max_turns=16 exhausted` with the same answer file (SHA `e1684b316488acf7a5ce3abb882d3489e307096e`) re-fetched 3× per trial under the same `args_hash=76e24c28`.

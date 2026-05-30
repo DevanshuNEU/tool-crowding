@@ -65,6 +65,10 @@ class ToolCall(BaseModel):
     was_hallucinated: bool = False
     input_tokens: int = 0
     output_tokens: int = 0
+    # Full flattened tool-result length BEFORE the model-facing cap
+    # (tool_result_char_cap). result_chars > the cap ⇒ the model saw a clipped
+    # result — the signal that surfaced the github-smoke answer-truncation bug.
+    result_chars: int = 0
 
 
 class ServerEntry(BaseModel):

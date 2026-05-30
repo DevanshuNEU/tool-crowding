@@ -298,6 +298,7 @@ def make_default_agent_factory(
         harness = AgentHarness(
             anthropic_client=anthropic_client,
             embedder=embedder,
+            tool_result_char_cap=config.tool_result_char_cap,
         )
         return AgentRunner(
             harness=harness,

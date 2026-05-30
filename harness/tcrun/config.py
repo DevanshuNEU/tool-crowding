@@ -39,6 +39,17 @@ EMBEDDER_ALIASES: dict[str, str] = {
 }
 
 
+# Default cap on the number of characters of a single tool result forwarded to
+# the model. Runtime-swappable via the TC_TOOL_RESULT_CHAR_CAP env var (handled
+# in load_config) and value-hashed into run_id, so any cap sweep is
+# reproducibility-honest. 65536 chars (~16k tokens) fits observed source files
+# (the github smoke target is 16,895 chars) with headroom while bounding
+# context growth so a large retrieved file cannot silently drive the
+# degradation curve via kill criterion #2 (context overflow). See
+# ../design/TOOL_RESULT_CAP.md for the rationale + planned sensitivity analysis.
+DEFAULT_TOOL_RESULT_CHAR_CAP = 65536
+
+
 def _resolve_embedder_env(value: str) -> str:
     """Map a TC_EMBEDDER value to a pin-file path. Accepts alias or literal path.
 
@@ -96,6 +107,10 @@ class Config(BaseModel):
     # pre-registration; varying k produces a new run_id (value-hashed) so any
     # sensitivity sweep is reproducibility-honest.
     retriever_top_k: int = 5
+    # Max chars of a single tool result handed to the model. Runtime-swappable
+    # via TC_TOOL_RESULT_CHAR_CAP (load_config); value-hashed into run_id so a
+    # cap sweep is reproducibility-honest. See ../design/TOOL_RESULT_CAP.md.
+    tool_result_char_cap: int = DEFAULT_TOOL_RESULT_CHAR_CAP
     include_padded_n1_control: bool = True
     include_no_mcp_baseline: bool = False
     include_random_tool_call_baseline: bool = False
@@ -175,4 +190,21 @@ def load_config(path: Path | str) -> Config:
             file=sys.stderr,
         )
         raw["embedder"] = resolved
+    env_cap = os.getenv("TC_TOOL_RESULT_CHAR_CAP")
+    if env_cap:
+        try:
+            cap_val = int(env_cap)
+        except ValueError:
+            print(
+                f"[load_config] WARNING: TC_TOOL_RESULT_CHAR_CAP={env_cap!r} is not "
+                f"an integer; ignoring and using the YAML/default value.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"[load_config] TC_TOOL_RESULT_CHAR_CAP={env_cap!r} overrides YAML "
+                f"tool_result_char_cap (resolved Config hashes into a new run_id)",
+                file=sys.stderr,
+            )
+            raw["tool_result_char_cap"] = cap_val
     return Config(**raw)

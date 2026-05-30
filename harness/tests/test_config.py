@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from tcrun.config import (
+    DEFAULT_TOOL_RESULT_CHAR_CAP,
     EMBEDDER_ALIASES,
     Config,
     _resolve_embedder_env,
@@ -177,3 +178,37 @@ def test_run_id_changes_when_embedder_pin_content_changes(tmp_path: Path):
 def test_run_id_is_deterministic_for_same_config(tmp_path: Path):
     cfg = _build_cfg(tmp_path, embedder_blob='{"provider":"openai","model":"x","dimension":3072}')
     assert compute_run_id(cfg) == compute_run_id(cfg)
+
+
+# ---------------------------------------------------------------------------
+# tool_result_char_cap (runtime-swappable via TC_TOOL_RESULT_CHAR_CAP)
+# ---------------------------------------------------------------------------
+
+
+def test_tool_result_char_cap_defaults_when_unset(tmp_path: Path, monkeypatch):
+    cfg_path = _write_yaml(tmp_path / "mve.yaml")
+    monkeypatch.delenv("TC_TOOL_RESULT_CHAR_CAP", raising=False)
+    cfg = load_config(cfg_path)
+    assert cfg.tool_result_char_cap == DEFAULT_TOOL_RESULT_CHAR_CAP
+
+
+def test_tool_result_char_cap_env_override(tmp_path: Path, monkeypatch):
+    cfg_path = _write_yaml(tmp_path / "mve.yaml")
+    monkeypatch.setenv("TC_TOOL_RESULT_CHAR_CAP", "8192")
+    cfg = load_config(cfg_path)
+    assert cfg.tool_result_char_cap == 8192
+
+
+def test_tool_result_char_cap_env_non_int_is_ignored(tmp_path: Path, monkeypatch):
+    cfg_path = _write_yaml(tmp_path / "mve.yaml")
+    monkeypatch.setenv("TC_TOOL_RESULT_CHAR_CAP", "not-an-int")
+    cfg = load_config(cfg_path)
+    assert cfg.tool_result_char_cap == DEFAULT_TOOL_RESULT_CHAR_CAP
+
+
+def test_run_id_changes_with_tool_result_char_cap(tmp_path: Path):
+    """The cap is value-hashed into run_id so a cap sweep is reproducibility-honest."""
+    cfg_a = _build_cfg(tmp_path / "a", embedder_blob='{"provider":"openai","model":"x","dimension":3072}')
+    cfg_b = cfg_a.model_copy(update={"tool_result_char_cap": 8192})
+    assert cfg_a.tool_result_char_cap != cfg_b.tool_result_char_cap
+    assert compute_run_id(cfg_a) != compute_run_id(cfg_b)

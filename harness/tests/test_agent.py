@@ -13,6 +13,7 @@ API/network/MCP. Verifies:
 from __future__ import annotations
 
 import asyncio
+import base64
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,6 +28,7 @@ from tcrun.agent import (
     TrialInputs,
     _build_system_prompt,
     _estimate_cost_usd,
+    _flatten_tool_result,
     _per_trial_nonce,
 )
 from tcrun.env import EnvFingerprint
@@ -563,3 +565,129 @@ async def test_agent_gives_up_after_max_turns():
     trial = await harness.run_trial(_inputs(sessions={"oci": sess}))
     assert trial.error_type == "agent_gave_up"
     assert trial.pass_ is False
+
+
+# ---------------------------------------------------------------------------
+# _flatten_tool_result — EmbeddedResource unwrapping (github_mcp get_file_contents)
+# ---------------------------------------------------------------------------
+
+
+def test_flatten_tool_result_unwraps_embedded_resource_text():
+    """github_mcp get_file_contents returns a metadata TextContent block plus an
+    EmbeddedResource whose .resource.text holds the file body. Both must surface;
+    reading block.text alone drops the file content (the github-smoke max_turns bug).
+    """
+    result = SimpleNamespace(
+        content=[
+            SimpleNamespace(type="text", text="successfully downloaded text file (SHA: abc123)"),
+            SimpleNamespace(
+                type="resource",
+                resource=SimpleNamespace(
+                    uri="repo://o/r/sha/deadbeef/contents/README.rst",
+                    mimeType="text/plain; charset=utf-8",
+                    text="def visit_call(self, node):\n    ...the answer body...",
+                    blob=None,
+                ),
+            ),
+        ],
+        structuredContent=None,
+        isError=False,
+    )
+    out = _flatten_tool_result(result)
+    assert "the answer body" in out                     # file content now surfaces
+    assert "successfully downloaded text file" in out   # metadata line preserved
+
+
+def test_flatten_tool_result_decodes_base64_blob_resource():
+    """An EmbeddedResource carrying base64 .resource.blob (no .text) is decoded."""
+    body = "module source line\nsecond line"
+    result = SimpleNamespace(
+        content=[
+            SimpleNamespace(
+                type="resource",
+                resource=SimpleNamespace(
+                    text=None, blob=base64.b64encode(body.encode()).decode()
+                ),
+            ),
+        ],
+        structuredContent=None,
+        isError=False,
+    )
+    assert body in _flatten_tool_result(result)
+
+
+# ---------------------------------------------------------------------------
+# tool_result_char_cap threading + result_chars observability
+# ---------------------------------------------------------------------------
+
+
+def test_tool_result_char_cap_truncates_content_and_records_full_length():
+    """A result larger than the cap is clipped for the model, but result_chars
+    records the full pre-cap length so truncation is visible in the audit row
+    (the signal that was missing when the github-smoke answer got clipped)."""
+    big = "Z" * 10000
+    sess = _session_with(["bigtool"], call_result=SimpleNamespace(
+        content=[SimpleNamespace(text=big, type="text")], structuredContent=None, isError=False))
+    harness = AgentHarness(
+        anthropic_client=_client_returning(_api_response("x")),
+        tool_result_char_cap=100,
+    )
+    inputs = _inputs(sessions={"oci": sess})
+    call, content_for_model, was_fake = asyncio.run(
+        harness._dispatch_tool_call(
+            step_idx=1, tool_name="bigtool", args={}, inputs=inputs, fake_tool_names=set()
+        )
+    )
+    assert was_fake is False
+    assert content_for_model == "Z" * 100   # model sees only the cap
+    assert call.result_chars == 10000        # full length recorded for audit
+
+
+def test_tool_result_char_cap_default_when_unset():
+    """Constructed without the kwarg, the harness uses the shared default cap."""
+    from tcrun.config import DEFAULT_TOOL_RESULT_CHAR_CAP
+    harness = AgentHarness(anthropic_client=_client_returning(_api_response("x")))
+    assert harness.tool_result_char_cap == DEFAULT_TOOL_RESULT_CHAR_CAP
+
+
+# ---------------------------------------------------------------------------
+# Bug A: oracle scores even on max_turns exhaustion
+# ---------------------------------------------------------------------------
+
+
+def test_oracle_runs_on_max_turns_and_can_pass():
+    """A trial that exhausts max_turns but whose final_text passes the oracle
+    must score pass=True with error_type reset to 'none' — not be silently
+    failed as agent_gave_up (Bug A)."""
+    def make_resp(*_a, **_kw):
+        return _api_response(
+            "the answer is visit_call", stop_reason="tool_use",
+            tool_uses=[{"name": "search", "id": "u1"}],
+        )
+    client = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=make_resp)))
+    harness = AgentHarness(
+        anthropic_client=client,
+        oracle=lambda text, inputs: "visit_call" in text,
+        max_turns=2,
+    )
+    trial = asyncio.run(harness.run_trial(_inputs(sessions={"oci": _session_with(["search"])})))
+    assert trial.pass_ is True
+    assert trial.error_type == "none"
+
+
+def test_write_trace_turn_includes_tool_use_args():
+    """Trace turns now persist the tool-call args (observability gap that made
+    the github-smoke diagnosis slow — args were unrecorded)."""
+    import io
+    import json as _json
+
+    from tcrun.agent import _write_trace_turn
+    buf = io.StringIO()
+    _write_trace_turn(
+        buf, turn_idx=0, stop_reason="tool_use", text_blocks=[],
+        tool_use_names=["get_file_contents"],
+        tool_use_args=[{"owner": "o", "repo": "r", "path": "p"}],
+        input_tokens=1, output_tokens=1,
+    )
+    rec = _json.loads(buf.getvalue())
+    assert rec["tool_use_args"] == [{"owner": "o", "repo": "r", "path": "p"}]

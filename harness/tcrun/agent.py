@@ -21,6 +21,7 @@ LOC budget per SPEC.md §11: ~380 LOC.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
@@ -31,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from .config import DEFAULT_TOOL_RESULT_CHAR_CAP
 from .embedder import Embedder, make_embedder, rank_tools_by_query
 from .env import EnvFingerprint
 from .results import (
@@ -184,10 +186,21 @@ class AgentHarness:
         *,
         max_turns: int | None = None,
         embedder: Embedder | None = None,
+        tool_result_char_cap: int | None = None,
     ):
         self._client = anthropic_client  # lazy AsyncAnthropic() if None
         self._oracle = oracle or _default_oracle_falsey
         self.max_turns = max_turns or self.MAX_TURNS
+        # Max chars of a single tool result forwarded to the model. Threaded
+        # from cfg.tool_result_char_cap by the orchestrator; falls back to the
+        # shared default for direct construction (tests). A too-small cap clips
+        # answers deep in a file (the github-smoke max_turns bug: answer at
+        # char 4,417 behind a 4,096 cap), so this must fit the target file.
+        self.tool_result_char_cap = (
+            tool_result_char_cap
+            if tool_result_char_cap is not None
+            else DEFAULT_TOOL_RESULT_CHAR_CAP
+        )
         # Optional pre-built embedder client for retriever-ON. If None and a
         # trial needs an embedder, _build_tools_manifest constructs one from
         # inputs.embedder_spec on the fly. Tests inject a stub here to avoid
@@ -253,12 +266,17 @@ class AgentHarness:
                         (getattr(tu, "name", None) or (tu.get("name") if isinstance(tu, dict) else "")) or ""
                         for tu in tool_use_blocks
                     ]
+                    turn_tool_args = [
+                        (getattr(tu, "input", None) or (tu.get("input") if isinstance(tu, dict) else {})) or {}
+                        for tu in tool_use_blocks
+                    ]
                     _write_trace_turn(
                         trace_file,
                         turn_idx=turn,
                         stop_reason=stop_reason,
                         text_blocks=turn_text_blocks,
                         tool_use_names=turn_tool_names,
+                        tool_use_args=turn_tool_args,
                         input_tokens=turn_in,
                         output_tokens=turn_out,
                     )
@@ -321,12 +339,19 @@ class AgentHarness:
                 raise
 
             passed = False
-            if error_type == "none":
-                # Oracle failures are F13-class (the oracle is part of the harness,
-                # not the SUT); re-raise to let the orchestrator halt rather than
-                # writing a row claiming the trial finished cleanly.
+            # Bug A fix: score the oracle on final_text even when the loop hit
+            # max_turns (error_type == "agent_gave_up"). A trial that emitted the
+            # correct answer before exhausting its turns must count as a pass, not
+            # be silently failed by skipping the oracle. Transport/harness failures
+            # (api_fault/server_fault/latency_timeout) still skip scoring because
+            # final_text is not a trustworthy answer there.
+            # Oracle failures are F13-class (the oracle is part of the harness, not
+            # the SUT); an oracle *exception* re-raises to halt the orchestrator.
+            if error_type in ("none", "agent_gave_up"):
                 passed = bool(self._oracle(final_text, inputs))
-                if not passed and error_type == "none":
+                if passed:
+                    error_type = "none"
+                elif error_type == "none":
                     # Classify wrong_tool vs wrong_answer vs agent_gave_up.
                     if first_correct_step is None and not tool_calls:
                         error_type = "agent_gave_up"
@@ -537,7 +562,7 @@ class AgentHarness:
             return call, f"Error: {e}", False
         elapsed = int((time.perf_counter() - t0) * 1000)
         payload = _flatten_tool_result(result)
-        truncated = payload[:4096]
+        truncated = payload[: self.tool_result_char_cap]
         call = ToolCall(
             step_idx=step_idx, server_called=owner_name, tool_called=tool_name,
             args_hash=args_hash, response_summary=truncated[:1024],
@@ -545,6 +570,7 @@ class AgentHarness:
             error=None if not getattr(result, "isError", False) else "tool returned isError",
             was_valid=True, was_hallucinated=False,
             output_tokens=max(1, len(truncated) // 4),  # rough token estimate
+            result_chars=len(payload),  # full pre-cap length; > cap ⇒ result was clipped
         )
         return call, truncated, False
 
@@ -604,6 +630,7 @@ def _write_trace_turn(
     tool_use_names: list[str],
     input_tokens: int,
     output_tokens: int,
+    tool_use_args: list[Any] | None = None,
 ) -> None:
     """Append a per-turn record. No-op when trace_file is None."""
     if trace_file is None:
@@ -615,6 +642,7 @@ def _write_trace_turn(
             "stop_reason": stop_reason,
             "text_blocks": text_blocks,
             "tool_use_names": tool_use_names,
+            "tool_use_args": tool_use_args if tool_use_args is not None else [],
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
         }
@@ -738,15 +766,46 @@ async def _get_full_tool_defs(session: Any) -> list[Any]:
 
 
 def _flatten_tool_result(result: Any) -> str:
-    """Stringify an MCP CallToolResult to plain text for the model + audit."""
+    """Stringify an MCP CallToolResult to plain text for the model + audit.
+
+    Handles both block shapes the pinned servers emit: plain ``TextContent``
+    (text at ``block.text``) and ``EmbeddedResource`` (file/blob payload under
+    ``block.resource``). github_mcp's ``get_file_contents`` returns the file
+    body as an EmbeddedResource whose content lives at ``resource.text`` (or a
+    base64 ``resource.blob``), while ``block.text`` carries only a
+    "successfully downloaded ... (SHA: ...)" metadata line. Reading
+    ``block.text`` alone therefore discarded the actual file content and the
+    agent never received the answer (all 5 github-smoke trials looped to
+    max_turns retrying retrieval). Both blocks are now emitted.
+    """
     content = getattr(result, "content", None) or []
     parts: list[str] = []
     for block in content:
         text = getattr(block, "text", None)
         if text is None and isinstance(block, dict):
-            text = block.get("text", "")
+            text = block.get("text")
         if text:
             parts.append(str(text))
+            continue
+        resource = getattr(block, "resource", None)
+        if resource is None and isinstance(block, dict):
+            resource = block.get("resource")
+        if resource is not None:
+            rtext = getattr(resource, "text", None)
+            if rtext is None and isinstance(resource, dict):
+                rtext = resource.get("text")
+            if rtext:
+                parts.append(str(rtext))
+                continue
+            blob = getattr(resource, "blob", None)
+            if blob is None and isinstance(resource, dict):
+                blob = resource.get("blob")
+            if blob:
+                try:
+                    parts.append(base64.b64decode(blob).decode("utf-8", errors="replace"))
+                except Exception:
+                    parts.append(f"<undecodable blob, {len(str(blob))} base64 chars>")
+                continue
     return "\n".join(parts) or json.dumps(getattr(result, "structuredContent", None) or {})
 
 
