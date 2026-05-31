@@ -92,11 +92,13 @@ primary_servers:
 
 distractors:
   - name: filesystem_mcp
-    description: Filesystem MCP — local file read/write
-    install: npx
-    package: "@modelcontextprotocol/server-filesystem"  # verify at install
-    npm_version: TBD
-    npm_lock_hash: TBD
+    description: Filesystem MCP — local file read/search (official mcp/filesystem Docker image; upstream npm @modelcontextprotocol/server-filesystem migrated to Docker per 2026-05-31, consistent with the 2026-05-26 git/fetch/sqlite/time/sequentialthinking migration — upstream npm namespace 404). Allowed-dir arg points at the in-container /app workdir, so as a distractor it presents its full tool surface for discrimination but (like any local filesystem server) cannot reach a remote GitHub repo.
+    install: docker
+    docker_image: mcp/filesystem
+    docker_tag: latest
+    image_digest: sha256:35fcf0217ca0d5bf7b0a5bd68fb3b89e08174676c0e0b4f431604512cf7b3f67
+    server_args: ["/app"]
+    pinned_at: 2026-05-31
     auth: none
     reachability: 1
     domain_overlap: code-adjacent
