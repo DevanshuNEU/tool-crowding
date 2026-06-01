@@ -295,6 +295,20 @@ def test_system_prompt_includes_stop_instruction():
     assert "do not invent tool names" in prompt.lower()
 
 
+def test_system_prompt_neutral_variant_drops_code_framing():
+    """The neutral variant removes the code-retrieval framing (confound control for
+    the framing-sensitivity probe) while preserving the nonce + load-bearing stop
+    clause. Default stays byte-for-byte code-retrieval."""
+    default = _build_system_prompt("abc123", "find foo")
+    neutral = _build_system_prompt("abc123", "find foo", "neutral")
+    assert "code-retrieval assistant" in default
+    assert "code-retrieval assistant" not in neutral
+    assert "code snippet" not in neutral
+    assert "<nonce>abc123</nonce>" in neutral
+    assert "stop calling tools" in neutral.lower()
+    assert "do not invent tool names" in neutral.lower()
+
+
 def test_estimate_cost_usd_is_positive():
     assert _estimate_cost_usd(1000, 100) > 0.0
 

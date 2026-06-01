@@ -212,3 +212,30 @@ def test_run_id_changes_with_tool_result_char_cap(tmp_path: Path):
     cfg_b = cfg_a.model_copy(update={"tool_result_char_cap": 8192})
     assert cfg_a.tool_result_char_cap != cfg_b.tool_result_char_cap
     assert compute_run_id(cfg_a) != compute_run_id(cfg_b)
+
+
+# ---------------------------------------------------------------------------
+# system_prompt_variant (runtime-swappable via TC_SYSTEM_PROMPT_VARIANT)
+# ---------------------------------------------------------------------------
+
+
+def test_system_prompt_variant_defaults_when_unset(tmp_path: Path, monkeypatch):
+    cfg_path = _write_yaml(tmp_path / "mve.yaml")
+    monkeypatch.delenv("TC_SYSTEM_PROMPT_VARIANT", raising=False)
+    cfg = load_config(cfg_path)
+    assert cfg.system_prompt_variant == "code-retrieval"
+
+
+def test_system_prompt_variant_env_override(tmp_path: Path, monkeypatch):
+    cfg_path = _write_yaml(tmp_path / "mve.yaml")
+    monkeypatch.setenv("TC_SYSTEM_PROMPT_VARIANT", "neutral")
+    cfg = load_config(cfg_path)
+    assert cfg.system_prompt_variant == "neutral"
+
+
+def test_run_id_changes_with_system_prompt_variant(tmp_path: Path):
+    """Persona is value-hashed into run_id so a framing probe is reproducibility-honest."""
+    cfg_a = _build_cfg(tmp_path / "a", embedder_blob='{"provider":"openai","model":"x","dimension":3072}')
+    cfg_b = cfg_a.model_copy(update={"system_prompt_variant": "neutral"})
+    assert cfg_a.system_prompt_variant != cfg_b.system_prompt_variant
+    assert compute_run_id(cfg_a) != compute_run_id(cfg_b)

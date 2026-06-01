@@ -111,6 +111,11 @@ class Config(BaseModel):
     # via TC_TOOL_RESULT_CHAR_CAP (load_config); value-hashed into run_id so a
     # cap sweep is reproducibility-honest. See ../design/TOOL_RESULT_CAP.md.
     tool_result_char_cap: int = DEFAULT_TOOL_RESULT_CHAR_CAP
+    # Agent system-prompt persona. Runtime-swappable via TC_SYSTEM_PROMPT_VARIANT
+    # (load_config); value-hashed into run_id so a framing-sensitivity probe is
+    # reproducibility-honest. "code-retrieval" is the v1 default; "neutral" drops
+    # the code-retrieval framing to test whether it confounds tool selection.
+    system_prompt_variant: Literal["code-retrieval", "neutral"] = "code-retrieval"
     include_padded_n1_control: bool = True
     include_no_mcp_baseline: bool = False
     include_random_tool_call_baseline: bool = False
@@ -207,4 +212,12 @@ def load_config(path: Path | str) -> Config:
                 file=sys.stderr,
             )
             raw["tool_result_char_cap"] = cap_val
+    env_variant = os.getenv("TC_SYSTEM_PROMPT_VARIANT")
+    if env_variant:
+        print(
+            f"[load_config] TC_SYSTEM_PROMPT_VARIANT={env_variant!r} overrides YAML "
+            f"system_prompt_variant (resolved Config hashes into a new run_id)",
+            file=sys.stderr,
+        )
+        raw["system_prompt_variant"] = env_variant
     return Config(**raw)

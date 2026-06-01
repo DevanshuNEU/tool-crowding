@@ -108,6 +108,7 @@ class TrialInputs:
     sampling_params: SamplingParams = field(default_factory=SamplingParams)
     ordering_seed: int = 0
     tool_listing_strategy: str = "full"
+    system_prompt_variant: str = "code-retrieval"
     pass_criterion_id: str = "symbol-plus-50pct-overlap-v1"
 
     # Ground truth for the oracle ONLY. CONTAMINATION INVARIANT: these must
@@ -223,7 +224,7 @@ class AgentHarness:
         tools_manifest, fake_tool_names, padding_skipped = await self._build_tools_manifest(inputs)
         client = self._client or _new_async_anthropic()
         messages = [{"role": "user", "content": inputs.task_query}]
-        system_prompt = _build_system_prompt(nonce, inputs.task_query)
+        system_prompt = _build_system_prompt(nonce, inputs.task_query, inputs.system_prompt_variant)
         # Trial schema field always has a path (for documentation), but the
         # actual file is only written when inputs.trace_path is explicitly set.
         # Empty trace_path = trace-writing disabled; the schema-side fallback
@@ -723,23 +724,41 @@ def _per_trial_nonce(trial_id: str) -> str:
     return hashlib.sha256((trial_id + secrets.token_hex(16)).encode()).hexdigest()
 
 
-def _build_system_prompt(nonce: str, query: str) -> str:
+def _build_system_prompt(nonce: str, query: str, variant: str = "code-retrieval") -> str:
     # The "stop calling tools once you have the answer" clause is load-bearing.
     # Without it, Sonnet 4.6 in agent mode emits >=1 tool_use per turn for all
     # MAX_TURNS turns even after retrieving the correct file (verified
     # 2026-05-27 against github-smoke-001; agent_gave_up rate = 4/4 with
     # first_correct_tool_step=1 and ~22 redundant tool calls per trial).
-    return (
-        f"<nonce>{nonce}</nonce>\n"
-        "You are a code-retrieval assistant. Use the available tools to find "
-        "the code snippet that answers the user's query.\n"
-        "\n"
-        "When you have located the snippet, reply with the snippet as plain "
-        "text and stop calling tools. Do not call additional tools to "
-        "double-check or explore further once you have an answer.\n"
-        "\n"
-        "Do not invent tool names."
-    )
+    #
+    # `variant` (runtime-swappable via TC_SYSTEM_PROMPT_VARIANT, hashed into
+    # run_id) controls the persona framing. "neutral" drops the code-retrieval
+    # framing to test whether it confounds tool selection (does the agent take a
+    # doc-Q&A lure when not explicitly told to retrieve code?). The stop clause
+    # and "do not invent tool names" are preserved in both.
+    if variant == "neutral":
+        persona = (
+            "You are a helpful assistant. Use the available tools to answer "
+            "the user's question.\n"
+            "\n"
+            "When you have the answer, reply with it as plain text and stop "
+            "calling tools. Do not call additional tools to double-check or "
+            "explore further once you have an answer.\n"
+            "\n"
+            "Do not invent tool names."
+        )
+    else:
+        persona = (
+            "You are a code-retrieval assistant. Use the available tools to find "
+            "the code snippet that answers the user's query.\n"
+            "\n"
+            "When you have located the snippet, reply with the snippet as plain "
+            "text and stop calling tools. Do not call additional tools to "
+            "double-check or explore further once you have an answer.\n"
+            "\n"
+            "Do not invent tool names."
+        )
+    return f"<nonce>{nonce}</nonce>\n" + persona
 
 
 def _assert_cache_cold(response: Any, trial_id: str) -> None:

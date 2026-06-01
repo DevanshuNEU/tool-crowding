@@ -265,6 +265,7 @@ class AgentRunner:
             sampling_params=SamplingParams(),
             ordering_seed=cell.ordering_seed,
             tool_listing_strategy=cfg.tool_listing_strategy,
+            system_prompt_variant=cfg.system_prompt_variant,
             sessions=self._sessions,
             is_padded_n1=cell.is_padded_n1,
             padding_corpus_path=cfg.padding_corpus,
