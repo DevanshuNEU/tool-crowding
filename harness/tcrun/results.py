@@ -2,6 +2,13 @@
 
 Implements SPEC.md §4 (Data Schema) + §3 ResultWriter responsibility.
 
+Schema v1.3 (lure-probe attribution, 2026-05-31) adds two optional fields with
+defaults: ToolCall.result_contained_target (did this call's full pre-cap result
+contain the ground-truth symbol) and Trial.solving_server (the server of the
+first tool call whose result contained the symbol; None ⇒ no tool-sourced
+answer). These make discrimination mis-routing a first-class signal: a pass with
+solving_server != the grounded primary means the agent was lured to a distractor.
+
 Schema v1.2 (locked 2026-05-25, embedder swappability work) adds four
 embedder fields (mandatory with v1-primary defaults) and aligns the
 `tool_listing_strategy` literal to Config (drops legacy `rag-mcp` and
@@ -39,11 +46,13 @@ from pydantic import BaseModel, Field, ValidationError
 SCHEMA_VERSION_V1_0 = "1.0"
 SCHEMA_VERSION_V1_1 = "1.1"
 SCHEMA_VERSION_V1_2 = "1.2"
-CURRENT_SCHEMA_VERSION = SCHEMA_VERSION_V1_2
+SCHEMA_VERSION_V1_3 = "1.3"
+CURRENT_SCHEMA_VERSION = SCHEMA_VERSION_V1_3
 SUPPORTED_SCHEMA_VERSIONS: tuple[str, ...] = (
     SCHEMA_VERSION_V1_0,
     SCHEMA_VERSION_V1_1,
     SCHEMA_VERSION_V1_2,
+    SCHEMA_VERSION_V1_3,
 )
 
 
@@ -69,6 +78,10 @@ class ToolCall(BaseModel):
     # (tool_result_char_cap). result_chars > the cap ⇒ the model saw a clipped
     # result — the signal that surfaced the github-smoke answer-truncation bug.
     result_chars: int = 0
+    # Schema v1.3 (lure-probe attribution): did this call's FULL pre-cap result
+    # contain the task's ground_truth_target symbol? Objective per-step grounding
+    # signal feeding Trial.solving_server. False for fake/unknown/errored calls.
+    result_contained_target: bool = False
 
 
 class ServerEntry(BaseModel):
@@ -144,6 +157,12 @@ class Trial(BaseModel):
     context_output_tokens: int = Field(..., ge=0)
     tool_calls: list[ToolCall]
     first_correct_tool_step: int | None = None
+    # Schema v1.3 (lure-probe attribution): server_called of the FIRST tool_call
+    # whose result contained ground_truth_target. None ⇒ the answer never surfaced
+    # from any tool result (a parametric/no-retrieval pass, or a fail). Headline
+    # mis-routing signal: solving_server != the grounded primary ⇒ lured to a
+    # distractor (e.g. deepwiki). Derived; role classification happens at analysis.
+    solving_server: str | None = None
     pass_: bool = Field(..., alias="pass")
     error_type: Literal[
         "none",
@@ -253,6 +272,18 @@ def _migrate_v1_1_to_v1_2(record: dict) -> dict:
     return record
 
 
+def _migrate_v1_2_to_v1_3(record: dict) -> dict:
+    """Hydrate a v1.2 record with v1.3 lure-attribution defaults.
+
+    solving_server defaults to None (pre-v1.3 trials carry no attribution).
+    Each ToolCall's result_contained_target hydrates via its model default
+    (False) on validation, so per-call entries need no explicit rewrite here.
+    """
+    record.setdefault("solving_server", None)
+    record["schema_version"] = SCHEMA_VERSION_V1_3
+    return record
+
+
 def read_jsonl(path: Path | str) -> Iterator[Trial]:
     """Stream Trial records from a results.jsonl, dispatching on schema_version.
 
@@ -278,6 +309,9 @@ def read_jsonl(path: Path | str) -> Iterator[Trial]:
                 version = SCHEMA_VERSION_V1_1
             if version == SCHEMA_VERSION_V1_1:
                 record = _migrate_v1_1_to_v1_2(record)
+                version = SCHEMA_VERSION_V1_2
+            if version == SCHEMA_VERSION_V1_2:
+                record = _migrate_v1_2_to_v1_3(record)
             try:
                 yield Trial.model_validate(record)
             except ValidationError as e:

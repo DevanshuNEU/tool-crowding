@@ -407,6 +407,12 @@ class AgentHarness:
             "context_output_tokens": out_tokens,
             "tool_calls": tool_calls,
             "first_correct_tool_step": first_correct_step,
+            # Lure-probe attribution: first server whose result carried the answer
+            # symbol. None ⇒ no tool-sourced answer (parametric pass or a fail).
+            "solving_server": next(
+                (c.server_called for c in tool_calls if c.result_contained_target),
+                None,
+            ),
             "pass": passed,
             "error_type": error_type,
             "error_detail": error_detail,
@@ -570,6 +576,11 @@ class AgentHarness:
         elapsed = int((time.perf_counter() - t0) * 1000)
         payload = _flatten_tool_result(result)
         truncated = payload[: self.tool_result_char_cap]
+        # Lure-probe grounding signal: did the FULL (pre-cap) result actually
+        # carry the answer symbol? Computed on payload, not the truncated
+        # model-facing slice, so a clipped-but-correct result still attributes.
+        gt = getattr(inputs, "ground_truth_target", "") or ""
+        result_contained_target = bool(gt) and gt in payload
         call = ToolCall(
             step_idx=step_idx, server_called=owner_name, tool_called=tool_name,
             args_hash=args_hash, response_summary=truncated[:1024],
@@ -578,6 +589,7 @@ class AgentHarness:
             was_valid=True, was_hallucinated=False,
             output_tokens=max(1, len(truncated) // 4),  # rough token estimate
             result_chars=len(payload),  # full pre-cap length; > cap ⇒ result was clipped
+            result_contained_target=result_contained_target,
         )
         return call, truncated, False
 

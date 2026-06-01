@@ -18,6 +18,7 @@ from tcrun.results import (
     SCHEMA_VERSION_V1_0,
     SCHEMA_VERSION_V1_1,
     SCHEMA_VERSION_V1_2,
+    SCHEMA_VERSION_V1_3,
     EnvFingerprintRef,
     ResultWriter,
     SamplingParams,
@@ -69,13 +70,16 @@ def _make_trial(**overrides) -> Trial:
     return Trial.model_validate(base)
 
 
-def test_current_schema_version_is_v1_2():
-    assert CURRENT_SCHEMA_VERSION == SCHEMA_VERSION_V1_2
+def test_current_schema_version_is_v1_3():
+    assert CURRENT_SCHEMA_VERSION == SCHEMA_VERSION_V1_3
 
 
 def test_trial_validates_happy_path():
     t = _make_trial()
-    assert t.schema_version == SCHEMA_VERSION_V1_2
+    assert t.schema_version == SCHEMA_VERSION_V1_3
+    # v1.3 lure-attribution defaults.
+    assert t.solving_server is None
+    assert t.tool_calls[0].result_contained_target is False
     assert t.is_padded_n1 is False
     assert t.fake_tool_invoked is False
     assert t.padding_skipped is None
@@ -133,13 +137,14 @@ def test_reader_dispatches_v1_0_to_current_chain(tmp_path: Path):
 
     rows = list(read_jsonl(out))
     assert len(rows) == 1
-    # Migrated forward through the full chain v1.0 → v1.1 → v1.2.
-    assert rows[0].schema_version == SCHEMA_VERSION_V1_2
+    # Migrated forward through the full chain v1.0 → v1.1 → v1.2 → v1.3.
+    assert rows[0].schema_version == SCHEMA_VERSION_V1_3
     assert rows[0].is_padded_n1 is False
     assert rows[0].fake_tool_invoked is False
     assert rows[0].padding_skipped is None
     assert rows[0].embedder_provider == "openai"
     assert rows[0].embedder_dimension == 3072
+    assert rows[0].solving_server is None
 
 
 def test_reader_dispatches_v1_1_to_v1_2_migration(tmp_path: Path):
@@ -154,11 +159,45 @@ def test_reader_dispatches_v1_1_to_v1_2_migration(tmp_path: Path):
     out.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
     rows = list(read_jsonl(out))
-    assert rows[0].schema_version == SCHEMA_VERSION_V1_2
+    assert rows[0].schema_version == SCHEMA_VERSION_V1_3
     assert rows[0].embedder_provider == "openai"
     assert rows[0].embedder_model == "text-embedding-3-large"
     assert rows[0].embedder_snapshot == "text-embedding-3-large"
     assert rows[0].embedder_dimension == 3072
+
+
+def test_v1_3_attribution_fields_roundtrip(tmp_path: Path):
+    """solving_server + per-call result_contained_target survive write/read."""
+    calls = [
+        ToolCall(step_idx=1, server_called="deepwiki", tool_called="ask_question",
+                 args_hash="h1", response_summary="prose", latency_ms=80,
+                 result_contained_target=False),
+        ToolCall(step_idx=2, server_called="github_mcp", tool_called="get_file_contents",
+                 args_hash="h2", response_summary="code", latency_ms=120,
+                 result_contained_target=True),
+    ]
+    t = _make_trial(tool_calls=calls, solving_server="github_mcp")
+    out = tmp_path / "results.jsonl"
+    with ResultWriter(out) as w:
+        w.write(t)
+    rows = list(read_jsonl(out))
+    assert rows[0].solving_server == "github_mcp"
+    assert [c.result_contained_target for c in rows[0].tool_calls] == [False, True]
+
+
+def test_reader_dispatches_v1_2_to_v1_3_migration(tmp_path: Path):
+    """v1.2 records hydrate with solving_server=None and per-call default False."""
+    record = _make_trial().model_dump(by_alias=True, mode="json")
+    record["schema_version"] = SCHEMA_VERSION_V1_2
+    record.pop("solving_server", None)
+    for c in record["tool_calls"]:
+        c.pop("result_contained_target", None)
+    out = tmp_path / "results.jsonl"
+    out.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    rows = list(read_jsonl(out))
+    assert rows[0].schema_version == SCHEMA_VERSION_V1_3
+    assert rows[0].solving_server is None
+    assert all(c.result_contained_target is False for c in rows[0].tool_calls)
 
 
 @pytest.mark.parametrize("legacy_value", ["rag-mcp", "mcp-zero"])
