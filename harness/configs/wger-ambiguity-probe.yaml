@@ -1,0 +1,70 @@
+# configs/wger-ambiguity-probe.yaml -- task-ambiguity / lure probe (2026-05-31)
+#
+# PURPOSE: the decisive third leg after two clean nulls (count: N=6 dissimilar;
+# surface-similarity: N=4 with a GitHub-NAMED task). Both nulls had the target
+# named, so github_mcp was the unambiguous route and the model never touched a
+# distractor. This probe changes ONE variable: the TASK is now conceptual and
+# does NOT name its target. It is answerable BOTH by deepwiki ask_question (a
+# single synthesizer call -- the LURE) AND by grounded github_mcp retrieval
+# (search_code + get_file_contents -- the CORRECT route).
+#
+# Topology is IDENTICAL to the composition null (github-similar-probe.yaml:
+# github_mcp + deepwiki + git_mcp + filesystem_mcp, N=4, retriever OFF). So the
+# only changed variable vs that null is task framing -> a clean A/B isolating
+# task-ambiguity as the cause of any mis-routing.
+#
+# DEEPWIKI ROLE (pre-registered, LOCKED 2026-05-31): deepwiki is a LURE
+# DISTRACTOR, never the grounded answer route. The correct route is github_mcp
+# retrieval. Routing to deepwiki IS the measured interference. The v1.3 schema
+# (solving_server + result_contained_target) attributes each pass:
+#   solving_server == github_mcp -> grounded (discrimination intact)
+#   solving_server == deepwiki    -> LURED (the hypothesised interference)
+#   solving_server == None on a pass -> parametric/no-retrieval (ruled out: the
+#                                       no-MCP baseline was 0/5)
+#
+# EXPLORATORY, NOT pre-registered. Ambiguity is not a pre-registered IV; any
+# headline claim needs fresh pre-registration before confirmatory data.
+#
+# GATES PASSED before authoring (2026-05-31):
+#   - 5-gram contamination: 0 public hits across 8 grams (clean).
+#   - deepwiki lure live: indexes wger fresh, ask_question returns the exact
+#     symbol sync_ingredients_bulk_or_api_task.
+#   - no-MCP baseline: 0/5 (model cannot name the post-cutoff symbol; it could
+#     not even identify the app). Uncontaminated -> any pass is tool-sourced.
+#
+# RUN (pending Devanshu's spend approval): est ~$1, 5 orderings.
+#   tcrun run -c configs/wger-ambiguity-probe.yaml --cost-cap 2.5
+# COMPARE solving_server / distractor-call rate vs the two nulls (both 0 lured).
+
+# Path-typed fields (content-hashed into run_id)
+task_set: tasks/wger-ambiguity.jsonl
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - github_mcp
+
+distractors:
+  - deepwiki
+  - git_mcp
+  - filesystem_mcp
+
+N: [4]
+runs_per_cell: 1
+model: claude-sonnet-4-6
+host: claude-desktop
+seed: 42
+
+tool_listing_strategy: full
+include_padded_n1_control: false
+include_no_mcp_baseline: false
+include_random_tool_call_baseline: false
+ragmcp_replication: false
+
+out: results/wger-ambiguity/
