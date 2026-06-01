@@ -4,6 +4,22 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Research — exploratory probe phase: a framing-gated ambiguity effect (2026-05-31)
+
+- Four cheap probes (4–5 trials each) moved the headline twice and landed on an **interaction**: tool discrimination is robust to server *count* (N=6 dissimilar → 0 mis-routing) and to surface *similarity* with a named target (N=4 → 0), and even to task *ambiguity* under a code-retrieval persona (0), **but** under a *neutral* agent persona an ambiguous task lets a doc-Q&A lure (`deepwiki`) solve the task (1/4 trials) and lifts distractor exploration from 0/5 to 2/4 trials. The earlier "discrimination is robust" read was confounded by the `code-retrieval assistant` system prompt. Full write-up, gates, run_ids, and threats-to-validity in **`FINDINGS.md`**. EXPLORATORY — no effect sizes; the pre-registered 2×2 factorial (persona × task-framing) is the next step.
+
+### Added — schema v1.3: lure-probe attribution (`solving_server` + `result_contained_target`) (2026-05-31)
+
+- `Trial.solving_server: str | None` — the server whose tool result first carried the ground-truth symbol; `null` on a pass means a parametric/no-retrieval pass (previously invisible). `ToolCall.result_contained_target: bool` — computed on the full pre-cap result. Together these make discrimination mis-routing a first-class signal (`solving_server != primary` ⇒ lured). Role classification (lure vs grounded) stays at analysis time so the trial row is config-agnostic. Migration `v1.2 → v1.3` hydrates old records. +2 tests (315 total).
+
+### Added — selectable agent persona via `TC_SYSTEM_PROMPT_VARIANT` (2026-05-31)
+
+- The agent system prompt was hardcoded to a `code-retrieval assistant` persona, which confounds ambiguity/lure probes. The persona is now runtime-swappable (`code-retrieval` default, byte-identical to prior behavior; `neutral` drops the code framing while preserving the load-bearing stop clause + nonce), resolved into the Config and value-hashed into `run_id` (mirrors `TC_EMBEDDER` / `TC_TOOL_RESULT_CHAR_CAP`). Flows `Config.system_prompt_variant → TrialInputs → _build_system_prompt`. +4 tests (319 total). **Note: adding the field shifts all `run_id`s** (intended — it is a reproducibility-relevant parameter).
+
+### Changed — `filesystem_mcp` migrated to the official `mcp/filesystem` Docker image (2026-05-31)
+
+- `filesystem_mcp` was a leftover `npx` pin with `npm_version`/`npm_lock_hash = TBD`; `verify_pins` correctly refused to spawn it. Migrated to `mcp/filesystem@sha256:35fcf02…` with `server_args: ["/app"]`, consistent with the 2026-05-26 npm→Docker migration of the other servers. Validated: spawns, lists 11 tools.
+
 ### Fixed — tool results now reach the model in full: EmbeddedResource unwrap + configurable result cap (2026-05-29)
 
 - **Corrected root cause (supersedes the 2026-05-28 "stop calling tools" diagnosis below).** Two paid github-smoke runs (2026-05-29) plus a zero-API MCP probe proved the `agent_gave_up` loop was **not** the model failing to stop after retrieving the answer. It was two harness-side bugs that meant the answer never reached the model: (1) `_flatten_tool_result` only read `block.text`, discarding `EmbeddedResource` blocks — and `github_mcp::get_file_contents` returns the file body as an `EmbeddedResource` (`resource.text`), with `block.text` carrying only a `"successfully downloaded … (SHA …)"` metadata line; (2) `_dispatch_tool_call` then truncated the result to a hard-coded 4,096 chars, and the smoke answer `def visit_call` sits at char **4,417**. The 2026-05-28 prompt clause moved per-trial cost only $0.527 → ~$0.49 (≈0%) because it treated a symptom that did not exist.
