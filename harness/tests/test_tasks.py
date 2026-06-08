@@ -91,10 +91,15 @@ def test_loader_raises_on_missing_file(tmp_path: Path):
         TaskLoader(tmp_path / "does_not_exist.jsonl").load()
 
 
-def test_loader_real_v1_path_returns_empty_for_placeholder():
-    """The real `tasks/v1/queries.jsonl` is currently a 0-byte placeholder
-    (per tasks/v1/README.md §"Status"); loader should return [] not raise."""
+def test_loader_real_v1_path_smoke():
+    """Smoke test: the live `tasks/v1/queries.jsonl` loads cleanly into Query
+    objects via the production schema. Row count is intentionally not asserted
+    (it grows per batch). Empty-file behavior is covered by
+    `test_loader_returns_empty_list_on_empty_file`."""
     real_path = Path(__file__).resolve().parents[1] / "tasks" / "v1" / "queries.jsonl"
     if not real_path.exists():
         pytest.skip("tasks/v1/queries.jsonl not present in this checkout")
-    assert load_tasks(real_path) == []
+    qs = load_tasks(real_path)
+    assert isinstance(qs, list)
+    assert all(isinstance(q, Query) for q in qs)
+    assert all(q.query_id.startswith("v1-") for q in qs)

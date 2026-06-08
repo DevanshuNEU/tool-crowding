@@ -1,0 +1,171 @@
+<<<<ANCHOR=ansible>>>>
+    def parse_distribution_file_UnionTech(self, name, data, path, collected_facts):
+        # UOS Server (RHEL-based) is identified by PLATFORM_ID="platform:uel*" in
+        # /etc/os-release, or "UOS Server release" / "UnionTech OS Server release"
+        # in /etc/redhat-release. UOS Desktop (Debian-based, no PLATFORM_ID) is
+        # left to parse_distribution_file_Debian.
+        uniontech_facts = {}
+        is_uos_release_file = bool(re.search(r'(UnionTech OS Server|UOS Server) release', data))
+        has_uel_platform_id = bool(re.search(r'PLATFORM_ID="?platform:uel', data))
+        if not (is_uos_release_file or has_uel_platform_id):
+            return False, uniontech_facts
+
+        uniontech_facts['distribution'] = 'UnionTech'
+        release = re.search(r'VERSION_CODENAME="?([^"\n]+)"?', data)
+        if release:
+            uniontech_facts['distribution_release'] = release.group(1)
+        else:
+            # /etc/redhat-release style: "UnionTech OS Server release 20 (kongzi)"
+            release = re.search(r'release\s+\S+\s+\(([^)]+)\)', data)
+            if release:
+                uniontech_facts['distribution_release'] = release.group(1)
+        version = re.search(r'VERSION_ID="?([^"\n]+)"?', data)
+        if version:
+            uniontech_facts['distribution_version'] = version.group(1)
+            uniontech_facts['distribution_major_version'] = version.group(1).split('.')[0]
+        else:
+            version = re.search(r'release\s+(\S+)', data)
+            if version:
+                uniontech_facts['distribution_version'] = version.group(1)
+                uniontech_facts['distribution_major_version'] = version.group(1).split('.')[0]
+        return True, uniontech_facts
+<<<<ANCHOR=paperless>>>>
+def build_localization_prompt(suggestions: dict, output_language: str) -> str:
+    language_name = get_language_name(output_language)
+    return f"""
+    You are localizing document classification suggestions for display in Paperless-ngx.
+
+    Rewrite only these generated fields in {language_name}: title, tags,
+    document_types, storage_paths.
+
+    Do not translate correspondents or dates.
+    Preserve proper nouns, organization names, product names, and exact official
+    document names. Translate generic category words when a {language_name}
+    equivalent exists.
+    Return the same JSON schema with all fields present.
+
+    Suggestions:
+    {json.dumps(suggestions)}
+    """.strip()
+<<<<ANCHOR=synapse>>>>
+def split_dict_to_fit_to_size(
+    original_dict: dict[str, Any],
+    *,
+    soft_max_size: int,
+    wrapping_object_size: int = 2,
+) -> Iterator[tuple[dict[str, JsonDict], int]]:
+    """Splits a dict up into a list of dicts, each of which is small enough to
+    fit into the given size when encoded as JSON. Every entry in the original
+    dict is in exactly one of the resulting dicts.
+
+    The `wrapping_object_size` can be used if the resulting dicts are going to
+    be wrapped in some additional JSON structure, to account for the additional
+    size of that structure. The default assumes no wrapping, and just accounts
+    for the two curly braces of the dict itself.
+
+    Note that if an individual entry in the original dict is larger than
+    `soft_max_size` then this will emit a dict containing just that entry, which
+    will be larger than `soft_max_size` when encoded as JSON.
+
+    Args:
+        original_dict: The dict to split.
+        soft_max_size: The maximum size of each dict when encoded as JSON.
+        wrapping_object_size: The estimated size of the JSON encoding of the
+            payload when empty.
+
+    Returns:
+        An iterator of (dict, size) pairs, where dict is a subset of the
+        original dict and size is the estimated size of the JSON encoding of
+        that dict, including any wrapping structure.
+    """
+
+    if not original_dict:
+        return
+
+    # Check if the whole dict fits within the size limit. If it does, we can
+    # skip the splitting logic and just return the original dict.
+    full_size = _len_with_wrapping_object(original_dict, wrapping_object_size)
+    if full_size <= soft_max_size:
+        yield (original_dict, full_size)
+        return
+
+    # The current payload being built up. We keep track of the estimated size of
+    # the JSON encoding of this payload so that we can decide when to start a
+    # new one.
+    current_payload = _DictSplitterState(subset={}, estimated_size=wrapping_object_size)
+
+    for key, payload in original_dict.items():
+        current_payload.subset[key] = payload
+        current_size = _len_with_wrapping_object(
+            current_payload.subset, wrapping_object_size
+        )
+
+        if current_size > soft_max_size:
+            # We've exceeded the size limit, so we need to start a new payload. We pop
+            # the current entry from the payload and yield the previous payload, then
+            # start a new payload with just the current entry.
+            if len(current_payload.subset) > 1:
+                current_payload.subset.pop(key)
+                yield current_payload.subset, current_payload.estimated_size
+
+                current_payload = _DictSplitterState(
+                    subset={},
+                    estimated_size=wrapping_object_size,
+                )
+
+                # Recalculate the current size with just the current entry.
+                current_size = _len_with_wrapping_object(
+                    {key: payload}, wrapping_object_size
+                )
+
+        current_payload.subset[key] = payload
+        current_payload.estimated_size = current_size
+
+    if current_payload.subset:
+        # yield the final payload if it's non-empty
+        yield current_payload.subset, current_payload.estimated_size
+<<<<ANCHOR=calibre>>>>
+def path_from_root(
+    root: str, path: str, allow_root: bool = False, reject_colon: bool = False, case_sensitive: bool = True
+) -> str:
+    '''
+    Resolve a relative path under root. Raises ValueError for absolute paths,
+    drive-qualified paths, traversal components, or paths outside root.
+    '''
+    if not isinstance(path, str):
+        raise ValueError('path must be text')
+    if reject_colon and ':' in path:
+        raise ValueError('colon not allowed in path')
+    if not path:
+        if allow_root:
+            return os.path.abspath(root)
+        raise ValueError('empty path not allowed')
+    if os.path.isabs(path) or ntpath.isabs(path) or os.path.splitdrive(path)[0] or ntpath.splitdrive(path)[0]:
+        raise ValueError('absolute paths are not allowed')
+    parts = path.replace('\\', '/').split('/')
+    if any(x in ('', '.', '..') for x in parts):
+        raise ValueError('invalid path component')
+    ans = os.path.abspath(os.path.join(root, *parts))
+    if not is_path_inside(root, ans, allow_parent=allow_root, case_sensitive=case_sensitive):
+        raise ValueError('path is outside root')
+    return ans
+<<<<ANCHOR=weblate>>>>
+def repo_matches_exact_repos(repo: str, repos: list[str]) -> bool:
+    """Check whether a repository URL would match the exact hook URL filter."""
+    for candidate in repos:
+        if repo in {candidate, f"{candidate}/"}:
+            return True
+        if (
+            repo.startswith("http://")
+            and candidate.startswith("http://")
+            and repo.endswith(f"@{candidate[7:]}")
+        ):
+            return True
+        if (
+            repo.startswith("https://")
+            and candidate.startswith("https://")
+            and repo.endswith(f"@{candidate[8:]}")
+        ):
+            return True
+    return False
+<<<<END>>>>
