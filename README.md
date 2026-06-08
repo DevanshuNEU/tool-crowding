@@ -64,10 +64,39 @@ git clone https://github.com/DevanshuNEU/tool-crowding
 cd tool-crowding/harness
 python -m venv .venv
 .venv/bin/pip install -e ".[dev,analysis]"
-.venv/bin/python -m pytest tests/   # 116 tests, ~2 seconds
+.venv/bin/python -m pytest tests/   # 322 tests, ~9 seconds
 ```
 
 Running a sweep against the Anthropic API requires `ANTHROPIC_API_KEY` and the pinned server pool. See [`harness/SPEC.md`](harness/SPEC.md) for the CLI and [`design/REPRODUCIBILITY.md`](design/REPRODUCIBILITY.md) for the 7-artifact identity chain.
+
+### Reproduce the exploratory figure (no API key, $0)
+
+The current figure is regenerated from committed probe records, so it needs no API
+key and makes no network calls:
+
+```bash
+cd tool-crowding/harness
+python -m venv .venv
+.venv/bin/pip install -e ".[analysis]"
+.venv/bin/python analysis/plot_interaction.py   # writes figures/interaction_mis_routing.png
+```
+
+The input data is the four frozen probes under
+[`harness/analysis/probe_data/`](harness/analysis/probe_data/) (see its `PROVENANCE.md`);
+the writeup is [`FINDINGS.md`](FINDINGS.md) and [`RESULTS.md`](RESULTS.md). This is an
+exploratory falsification of the naive count hypothesis plus a single directional signal,
+not a headline result.
+
+### With API credits: the deferred crowding sweep
+
+The crowding axis (a pass-rate-over-N curve) is wired but not yet run, because it costs
+real money. [`harness/configs/nsweep-minimal.yaml`](harness/configs/nsweep-minimal.yaml)
+is the cheapest valid 3-point sweep (~20 trials, ~$4 at the measured rate); the full
+funded pilot is specified in [`design/PILOT_V0.md`](design/PILOT_V0.md). Run with:
+
+```bash
+tcrun run -c configs/nsweep-minimal.yaml --cost-cap 6   # requires ANTHROPIC_API_KEY + credits
+```
 
 ## Design
 

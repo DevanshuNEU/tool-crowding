@@ -1,0 +1,70 @@
+# configs/nsweep-minimal.yaml -- cheapest valid crowding-axis sweep (DEFERRED, not yet run)
+#
+# WHY THIS EXISTS
+# The exploratory probes (FINDINGS.md) showed server *count* does not degrade tool
+# routing (N=6 dissimilar distractors -> 0 mis-routing). This config is the cheapest
+# honest confirmation of that null on a real swept N axis: a flat pass@1 / mis-routing
+# curve over N is the falsification, captioned as "count alone does not degrade routing,
+# motivating the framing x ambiguity design." It is the deferred "Branch B" panel.
+#
+# It is NOT a substitute for the funded pilot. The full N in {1,5,10,20} sweep with the
+# capacity control lives in PILOT_V0.md / the pilot config; that needs >= 9 reachability-
+# pinned distractors for an honest N=10 (the slice-fill in orchestrator._server_names_for_group
+# silently under-fills if the distractor pool is shorter than N-1, so do not raise N here
+# beyond what the distractor list below can satisfy).
+#
+# STATUS: never executed. Devanshu has ~$0.50 credit; all trials are gated on a top-up.
+# Run only after credits land, and re-run preflight first (server digests may have drifted):
+#   tcrun run -c configs/nsweep-minimal.yaml --cost-cap 6
+#
+# COST (honest estimate at the measured ~$0.20/trial from the similar-probe run):
+#   orderings are hardcoded to 5 (SPEC.md S5; not config-exposed), so per N level =
+#   5 orderings x runs_per_cell. With runs_per_cell=1 and the padded-N=1 control on:
+#     N=1   : 5 (crowding) + 5 (padded-N=1 capacity control) = 10 trials
+#     N=3   : 5 trials
+#     N=5   : 5 trials
+#     TOTAL : 20 trials  ~  $4.00
+#   Set include_padded_n1_control: false to drop to 15 trials (~$3), but the padded
+#   control is the load-bearing capacity-vs-discrimination check (kill criterion #3),
+#   so keep it on unless you only want the headline curve.
+
+# Path-typed fields (content-hashed into run_id) -- identical artifacts to mve.yaml.
+task_set: tasks/github_smoke.jsonl     # 1 named-target task, primary_server=github_mcp.
+                                       # Named target keeps routing unambiguous so the ONLY
+                                       # varying factor is N (no ambiguity confound).
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - github_mcp
+
+# 5 known-good pinned distractors (the subset used by mve.yaml). N max here is 6
+# (primary + these 5); N=5 draws 4 of them. Do not set N above 6 without adding
+# distractors, or the cell will silently under-fill.
+distractors:
+  - filesystem_mcp
+  - memory_mcp
+  - sequential_thinking_mcp
+  - time_mcp
+  - sqlite_mcp
+
+N: [1, 3, 5]
+runs_per_cell: 1
+model: claude-sonnet-4-6
+host: claude-desktop
+seed: 42
+
+tool_listing_strategy: full              # retriever OFF: the agent sees every tool, the honest crowding condition
+include_padded_n1_control: true          # capacity-vs-discrimination control (kill criterion #3)
+include_no_mcp_baseline: false
+include_random_tool_call_baseline: false
+ragmcp_replication: false
+
+# Output (not hashed into run_id)
+out: results/nsweep-minimal/
