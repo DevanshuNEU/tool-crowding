@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-116%20passing-brightgreen.svg)](harness/tests/)
+[![Tests](https://img.shields.io/badge/tests-326%20passing-brightgreen.svg)](harness/tests/)
 [![Pre-registered](https://img.shields.io/badge/predictions-pre--registered-purple.svg)](design/PRE_REGISTRATION.md)
 [![Status](https://img.shields.io/badge/status-pre--pilot-orange.svg)](CHANGELOG.md)
 [![Cite](https://img.shields.io/badge/cite-CITATION.cff-blueviolet.svg)](CITATION.cff)
@@ -30,17 +30,17 @@ When you install 10 to 20 Model Context Protocol servers simultaneously (the rea
 
 ## Status
 
-**Pre-pilot as of 2026-05-23.** Methodology locked across 10 binding design docs. 12-module Python harness with 116 passing pytest cases. 199-entry fake-tool corpus. Five hand-curated oracle smoke tests (5/5 pass). Pre-registered predictions and four scenario abstracts committed before the pilot runs.
+**Pre-pilot.** Methodology locked across 10 binding design docs. 12-module Python harness with 326 passing pytest cases. 199-entry fake-tool corpus. Five hand-curated oracle smoke tests (5/5 pass). Pre-registered predictions and four scenario abstracts committed before the pilot runs. One round of cheap exploratory probes is in — 19 trials, one task, one model (see [`FINDINGS.md`](FINDINGS.md)) — directional signal only, not pre-registered results.
 
-| Milestone                            | Date                     | State   |
-| ------------------------------------ | ------------------------ | ------- |
-| Methodology locked                   | 2026-05-20 to 2026-05-22 | done    |
-| Harness + corpus + tests             | 2026-05-23               | done    |
-| Query set + 50-trial calibration     | 2026-05-24               | pending |
-| 144-trial pre-registered pilot       | 2026-05-26               | pending |
-| Public launch + arXiv preprint draft | 2026-05-27               | pending |
+| Milestone                                | State                          |
+| ---------------------------------------- | ------------------------------ |
+| Methodology locked (10 design docs)      | done                           |
+| Harness + corpus + tests                 | done — 326 tests passing       |
+| Exploratory probes (cheap falsification) | done — 19 trials, exploratory  |
+| Pre-registered pilot                     | gated on API credits           |
+| Public launch + arXiv preprint draft     | gated on the pilot             |
 
-This README will be updated with verified numbers after the pilot lands. We do not over-claim.
+The confirmatory pilot and everything downstream are gated on funding the API run (see [Roadmap](#roadmap)). This README will be updated with verified numbers only after the pre-registered pilot lands. We do not over-claim.
 
 ## What we measure
 
@@ -64,7 +64,7 @@ git clone https://github.com/DevanshuNEU/tool-crowding
 cd tool-crowding/harness
 python -m venv .venv
 .venv/bin/pip install -e ".[dev,analysis]"
-.venv/bin/python -m pytest tests/   # 322 tests, ~9 seconds
+.venv/bin/python -m pytest tests/   # 326 tests, ~7 seconds
 ```
 
 Running a sweep against the Anthropic API requires `ANTHROPIC_API_KEY` and the pinned server pool. See [`harness/SPEC.md`](harness/SPEC.md) for the CLI and [`design/REPRODUCIBILITY.md`](design/REPRODUCIBILITY.md) for the 7-artifact identity chain.
@@ -91,7 +91,7 @@ not a headline result.
 
 The crowding axis (a pass-rate-over-N curve) is wired but not yet run, because it costs
 real money. [`harness/configs/nsweep-minimal.yaml`](harness/configs/nsweep-minimal.yaml)
-is the cheapest valid 3-point sweep (~20 trials, ~$4 at the measured rate); the full
+is the cheapest valid 3-point sweep (8 trials, ~$1.60 at the measured rate); the full
 funded pilot is specified in [`design/PILOT_V0.md`](design/PILOT_V0.md). Run with:
 
 ```bash
@@ -108,7 +108,7 @@ The methodology is locked in 10 binding documents. Read them in this order:
 4. [`design/PADDING_STRATEGY.md`](design/PADDING_STRATEGY.md) — the load-bearing F1 falsification arm
 5. [`design/QUERY_SET_HYGIENE.md`](design/QUERY_SET_HYGIENE.md) — six layered contamination defenses
 6. [`design/REPRODUCIBILITY.md`](design/REPRODUCIBILITY.md) — the 7-artifact content-addressed identity chain
-7. [`design/SERVER_POOL.md`](design/SERVER_POOL.md) — 15-server pool with reachability + pinning
+7. [`design/SERVER_POOL.md`](design/SERVER_POOL.md) — 18-server pool (5 chart-primaries + 13 distractors) with reachability + pinning
 8. [`design/ADVERSARIAL_AUDIT.md`](design/ADVERSARIAL_AUDIT.md) — six attack vectors on the benchmark itself
 9. [`design/CHART_LAYOUT.md`](design/CHART_LAYOUT.md) — the headline figure specification
 10. [`design/PILOT_V0.md`](design/PILOT_V0.md) — the 224-trial pilot scope
@@ -139,11 +139,11 @@ Decision rules per scenario are locked. **No post-hoc rationalization.** Kill cr
 
 ## Roadmap
 
-- **v0.1.0-pre-pilot** (current) — methodology + harness + corpus, no empirical numbers yet
-- **v0.2.0-pilot** (planned 2026-05-27) — 144-trial pre-registered pilot results + headline chart
-- **v0.3.0-v1** (planned Weeks 4-5) — full sweep across frontier panel + arXiv preprint draft
+- **v0.1.0-pre-pilot** (current) — methodology + harness + corpus + exploratory probes, no confirmatory numbers yet
+- **v0.2.0-pilot** (next; gated on API credits) — pre-registered pilot results + headline chart
+- **v0.3.0-v1** (after the pilot) — full sweep across the frontier panel + arXiv preprint draft
 - **v1.1.0** (post-launch) — community PR contributions via `tcrun submit`, expanded server pool
-- **v2.0.0** (Q3-Q4 2026) — API tasks, browser tasks, mitigation comparison, mechanism study
+- **v2.0.0** (later) — API tasks, browser tasks, mitigation comparison, mechanism study
 
 ## Conflict of interest
 
@@ -191,4 +191,4 @@ Apache 2.0. See [LICENSE](LICENSE).
 
 ---
 
-_Pre-pilot status. Verified numbers and the headline chart land 2026-05-27._
+_Pre-pilot status. Confirmatory numbers and the headline chart land after the pre-registered pilot is funded and run._

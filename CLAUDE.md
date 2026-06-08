@@ -9,9 +9,9 @@ Real users install 10 to 20 MCP servers simultaneously. Existing benchmarks use 
 ## Status (as of v0.1.0-pre-pilot)
 
 - **Methodology**: locked across 10 binding design docs in `design/`
-- **Harness**: 12-module `tcrun` Python package + 116 passing pytest cases
+- **Harness**: 12-module `tcrun` Python package + 326 passing pytest cases
 - **Fake-tool corpus**: 199 entries shipped at `design/fake_tool_corpus.jsonl`
-- **Server pool**: 13 of 15 servers pinned; GitHub MCP Docker digest pending
+- **Server pool**: 18-server pool (5 chart-primaries + 13 distractors); 16 pinned in `harness/tcrun/servers_pinned.yaml` (Context7 + Sentry, both API-key-gated, pending)
 - **Pilot**: 144 main trials + 30 retriever robustness + 50 RAG-MCP replication = 224 total, pre-registered
 - **arXiv preprint**: Weeks 4-6 of the v1 sweep
 - **Workshop submission**: Aug-Sep 2026 deadlines
@@ -47,7 +47,7 @@ If any kill criterion fires: stop, document, pivot or shelve. Do not push throug
 - `design/PADDING_STRATEGY.md` — padded-N=1 filler-selection algorithm
 - `design/QUERY_SET_HYGIENE.md` — six layered contamination defenses
 - `design/REPRODUCIBILITY.md` — 7-artifact content-addressed identity chain
-- `design/SERVER_POOL.md` — 15-server pool + reachability + version pinning
+- `design/SERVER_POOL.md` — 18-server pool + reachability + version pinning
 - `design/MODEL_VERSIONS.md` — frontier-panel pinning
 - `design/ADVERSARIAL_AUDIT.md` — six attack vectors on the benchmark itself
 - `design/CHART_LAYOUT.md` — the headline figure specification
