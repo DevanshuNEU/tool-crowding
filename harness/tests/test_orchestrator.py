@@ -379,3 +379,34 @@ def test_server_names_for_group_n5_deterministic(tmp_path: Path):
     assert first == second
     assert first[0] == "oci"
     assert len(first) == 5
+
+
+def test_server_names_for_group_no_mcp_baseline_returns_empty(tmp_path: Path):
+    """N=0 sentinel (include_no_mcp_baseline arm) spawns zero servers."""
+    cfg = _build_config(tmp_path)
+    orch = Orchestrator(cfg, queries=[SimpleNamespace(query_id="q1")])
+    cell = CellSpec(run_id=orch.run_id, model=cfg.model, N=0, query_id="q1",
+                    primary_server="oci", ordering_seed=0, repetition_id=0)
+    assert orch._server_names_for_group(cell) == []
+
+
+def test_enumerate_cells_omits_no_mcp_baseline_by_default(tmp_path: Path):
+    """_build_config leaves include_no_mcp_baseline at its False default."""
+    cfg = _build_config(tmp_path)
+    orch = Orchestrator(cfg, queries=[SimpleNamespace(query_id="q1")])
+    cells = orch.enumerate_cells()
+    assert [c for c in cells if c.N == 0] == []
+
+
+def test_enumerate_cells_includes_no_mcp_baseline_when_enabled(tmp_path: Path):
+    """One N=0 cell per (query, repetition), single ordering, no 5x multiply."""
+    cfg = _build_config(tmp_path).model_copy(update={"include_no_mcp_baseline": True})
+    queries = [SimpleNamespace(query_id="q1"), SimpleNamespace(query_id="q2")]
+    orch = Orchestrator(cfg, queries=queries)
+    cells = orch.enumerate_cells()
+    no_mcp = [c for c in cells if c.N == 0]
+    assert len(no_mcp) == 2  # runs_per_cell=1 x 2 queries; orderings NOT multiplied
+    assert {c.query_id for c in no_mcp} == {"q1", "q2"}
+    assert all(c.ordering_seed == 0 for c in no_mcp)
+    assert all(not c.is_padded_n1 for c in no_mcp)
+    assert all(orch._server_names_for_group(c) == [] for c in no_mcp)

@@ -297,6 +297,32 @@ class Orchestrator:
                 f"config.primary_servers={primaries} did not intersect with any "
                 f"query.primary_server (unmatched query primaries: {unmatched})"
             )
+
+        # No-MCP baseline arm (include_no_mcp_baseline): the uncontaminated floor.
+        # Emitted AFTER the halt check so it can never mask a primary-filter
+        # mismatch among the crowding cells. One cell per (query, repetition) at
+        # N=0, ordering_seed=0 — orderings are meaningless with zero tools, so we
+        # do not multiply by the 5-ordering product (that would 5x the spend).
+        # Attribute to the query's natural-fit primary for analysis grouping;
+        # the baseline itself spawns no servers (see _server_names_for_group).
+        if self.config.include_no_mcp_baseline:
+            for query_obj, rep in product(queries_list, range(runs_per_cell)):
+                q_primary = getattr(query_obj, "primary_server", None)
+                primary = q_primary or (primaries[0] if primaries else "__none__")
+                query_id = getattr(query_obj, "query_id", str(query_obj))
+                cells.append(
+                    CellSpec(
+                        run_id=self.run_id,
+                        model=self.config.model,
+                        N=0,
+                        query_id=query_id,
+                        primary_server=primary,
+                        ordering_seed=0,
+                        repetition_id=rep,
+                        is_padded_n1=False,
+                    )
+                )
+
         return cells
 
     # ---- cost monitor ----
@@ -384,6 +410,13 @@ class Orchestrator:
         Padded-N=1 cells start with just the primary; fillers are added by
         the agent layer via tcrun.padding.
         """
+        if cell.N == 0:
+            # No-MCP baseline arm (include_no_mcp_baseline): zero servers spawned.
+            # Self-describing in the Trial as N=0 + empty server_set, so no schema
+            # field is needed. N==0 is the sentinel — config.N (the crowding sweep)
+            # never contains 0; these cells are emitted only by enumerate_cells'
+            # no-MCP pass.
+            return []
         if cell.is_padded_n1 or cell.N == 1:
             return [cell.primary_server]
         import random as _r

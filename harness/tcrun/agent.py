@@ -893,16 +893,22 @@ async def _invoke_api(
     attempts = 5
     delay = 1.0
     last_exc: Exception | None = None
+    # No-MCP baseline arm (include_no_mcp_baseline): zero servers → empty tool
+    # manifest. The Messages API contract for "no tools available" is to OMIT the
+    # tools parameter, not to pass an empty list, so the model answers from
+    # parametric knowledge. Normal cells always have ≥1 tool and are unaffected.
+    create_kwargs: dict[str, Any] = dict(
+        model=inputs.model_snapshot_id,
+        max_tokens=inputs.sampling_params.max_tokens,
+        temperature=inputs.sampling_params.temperature,
+        system=system_prompt,
+        messages=messages,
+    )
+    if tools:
+        create_kwargs["tools"] = tools
     for attempt in range(attempts):
         try:
-            return await client.messages.create(
-                model=inputs.model_snapshot_id,
-                max_tokens=inputs.sampling_params.max_tokens,
-                temperature=inputs.sampling_params.temperature,
-                system=system_prompt,
-                messages=messages,
-                tools=tools,
-            )
+            return await client.messages.create(**create_kwargs)
         except (APIFault, ServerFault) as e:
             last_exc = e
             if attempt == attempts - 1:
