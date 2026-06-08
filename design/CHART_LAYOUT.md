@@ -32,14 +32,15 @@ Two stacked panels. 16:10 aspect ratio for social cards. Top panel is the headli
 
 ### Bottom panel: per-server MPD bars
 
-- **x-axis**: 15 servers (5 primary code-retrieval + 10 distractors), sorted by MPD magnitude (most-favorable left → most-harmful right). Server names rotated 30°.
+- **x-axis**: 18 servers (5 chart-primaries + 13 distractors), sorted by MPD magnitude (most-favorable left → most-harmful right). Server names rotated 30°.
 - **y-axis**: MPD, −0.2 to +0.2. Zero line bold black. Major gridlines every 0.05, alpha 0.3.
 - **Bars**: width 0.7. Color-coded per `RESEARCH_DESIGN.md §3` domain-overlap tags:
-  - **Primary code-retrieval (5)**: Wong sky-blue (#56B4E9).
-  - **Code-adjacent distractors (Filesystem, SQLite, PostgreSQL)**: Wong orange (#E69F00).
+  - **Query-primaries (3: GitHub MCP, DeepWiki, Git MCP)**: Wong sky-blue (#56B4E9).
+  - **Orthogonal-domain chart-primaries (2: Context7, Sentry)**: Wong vermillion (#D55E00). Distinct from sky-blue to make the composition-sensitivity hypothesis visually legible: if MPD differs by ≥5pp between sky-blue and vermillion sets, F4 fires (composition matters); if not, F4 disconfirms (raw N is the right scalar).
+  - **Code-adjacent distractors (Filesystem, SQLite, PostgreSQL, Aider, Fetch, OCI)**: Wong orange (#E69F00).
   - **Orthogonal distractors (Memory, Sequential Thinking, Time, Brave Search, Linear, Notion, Slack)**: Wong gray (#999999).
 - **CI brackets**: paired-bootstrap 95% CI per bar, lineweight 1.5pt, capped.
-- **OCI annotation**: star marker "★" above OCI's bar; footnote "★ COI-disclosed: authored by corresponding author. Leave-OCI-out sensitivity in appendix." (per RESEARCH_DESIGN.md §11 item 5).
+- **OCI annotation**: small "†" marker above OCI's bar; footnote "† Author's MCP server (distractor-only role; excluded from chart-primaries per `RESEARCH_DESIGN.md §11`)."
 - **Panel title**: "Per-server Marginal Performance Delta (MPD) at N=10; positive = hurts neighbors".
 
 ## Style
@@ -50,7 +51,7 @@ Two stacked panels. 16:10 aspect ratio for social cards. Top panel is the headli
 - **Spines**: top + right hidden; left + bottom kept.
 - **Background**: white. No dark-mode variant for launch (high-contrast print-safe wins universally).
 - **Aspect**: 16:10 → 1600×1000px. Matplotlib `figsize=(16, 10)` at dpi=100 for SVG; dpi=200 for PNG.
-- **Footnote (bottom of figure)**: "n=3 trial repeats per cell × 3 queries (pilot, 144 trials); paired-bootstrap CIs; pre-registered per design/PRE_REGISTRATION.md. Full v1 sweep: n=5 orderings × 50 queries × 5 primary servers."
+- **Footnote (bottom of figure)**: "n=3 trial repeats per cell × 3 queries (pilot, 144 trials); paired-bootstrap CIs; pre-registered per design/PRE_REGISTRATION.md. Full v1 sweep: n=5 orderings × 40 queries × 3 query-primaries (GitHub MCP, DeepWiki, Git MCP); Context7 + Sentry measured for MPD but never as `primary_server` per the composition-sensitivity arm."
 
 ## Output formats
 
@@ -109,12 +110,15 @@ def load_results():
                         0.82, 0.81, 0.78, 0.75, 0.72,
                         0.85, 0.80, 0.76, 0.71, 0.66],
         })
-        servers = ["OCI", "GitHub-MCP", "Git-MCP", "Aider", "Fetch",
-                   "Filesystem", "SQLite", "PostgreSQL",
+        servers = ["GitHub-MCP", "DeepWiki", "Git-MCP",
+                   "Context7", "Sentry",
+                   "Filesystem", "SQLite", "PostgreSQL", "Aider", "Fetch", "OCI",
                    "Memory", "Seq-Think", "Time", "Brave", "Linear", "Notion", "Slack"]
-        tags = (["primary"] * 5 + ["code_adj"] * 3 + ["orthogonal"] * 7)
-        mpds = [-0.08, -0.03, -0.02, 0.01, 0.04,
-                 0.06, 0.09, 0.11,
+        tags = (["query_primary"] * 3 + ["orthog_primary"] * 2
+                + ["code_adj"] * 6 + ["orthogonal"] * 7)
+        mpds = [-0.08, -0.05, -0.03,
+                 0.01, 0.02,
+                 0.06, 0.09, 0.11, 0.04, 0.05, 0.03,
                 -0.01, 0.00, 0.02, 0.03, 0.05, 0.07, 0.10]
         mpd_df = pd.DataFrame({"server": servers, "tag": tags, "mpd": mpds,
                                "ci_lo": [m - 0.03 for m in mpds],
@@ -153,9 +157,10 @@ def plot_killer_chart(curves_df, mpd_df, outpath_svg, outpath_png):
                      fontsize=14, loc="left")
     # Bottom panel: per-server MPD bars
     mpd_sorted = mpd_df.sort_values("mpd").reset_index(drop=True)
-    tag_to_color = {"primary":    WONG["sky_blue"],
-                    "code_adj":   WONG["orange"],
-                    "orthogonal": WONG["gray"]}
+    tag_to_color = {"query_primary":  WONG["sky_blue"],
+                    "orthog_primary": WONG["vermillion"],
+                    "code_adj":       WONG["orange"],
+                    "orthogonal":     WONG["gray"]}
     colors = [tag_to_color[t] for t in mpd_sorted["tag"]]
     yerr = [mpd_sorted["mpd"] - mpd_sorted["ci_lo"],
             mpd_sorted["ci_hi"] - mpd_sorted["mpd"]]
@@ -164,18 +169,21 @@ def plot_killer_chart(curves_df, mpd_df, outpath_svg, outpath_png):
     ax_bot.axhline(0, color="black", linewidth=1)
     for i, row in mpd_sorted.iterrows():
         if row["server"] == "OCI":
-            ax_bot.text(i, row["ci_hi"] + 0.01, "★", ha="center", fontsize=14)
+            ax_bot.text(i, row["ci_hi"] + 0.01, "†", ha="center", fontsize=14)
     ax_bot.set_ylim(-0.2, 0.2); ax_bot.set_ylabel("MPD", fontsize=12)
     ax_bot.set_xlabel("MCP server (sorted by MPD)", fontsize=12)
     ax_bot.tick_params(axis="x", rotation=30); ax_bot.grid(alpha=0.3, axis="y", zorder=0)
     ax_bot.spines["top"].set_visible(False); ax_bot.spines["right"].set_visible(False)
     legend_handles = [plt.Rectangle((0, 0), 1, 1, color=tag_to_color[t]) for t in
-                      ["primary", "code_adj", "orthogonal"]]
-    ax_bot.legend(legend_handles, ["Primary code-retrieval", "Code-adjacent distractor",
-                                    "Orthogonal distractor"], loc="upper left", fontsize=10)
+                      ["query_primary", "orthog_primary", "code_adj", "orthogonal"]]
+    ax_bot.legend(legend_handles,
+                  ["Query-primary (code-retrieval)",
+                   "Chart-primary (orthogonal domain — composition test)",
+                   "Code-adjacent distractor", "Orthogonal distractor"],
+                  loc="upper left", fontsize=10)
     ax_bot.set_title("Per-server MPD at N=10; positive = hurts neighbors", fontsize=14, loc="left")
     fig.text(0.5, 0.01,
-             "★ OCI: COI-disclosed (corresponding author). Leave-OCI-out sensitivity in appendix.    "
+             "† OCI: author's MCP server, distractor-only role (excluded from chart-primaries per RESEARCH_DESIGN.md §11).    "
              "n=3 repeats × 3 queries (pilot); paired-bootstrap CIs; pre-registered per design/PRE_REGISTRATION.md.",
              ha="center", fontsize=9, style="italic", color="#444444")
     plt.tight_layout(rect=[0, 0.03, 1, 1])

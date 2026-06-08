@@ -23,20 +23,21 @@ The load-bearing departure from RAG-MCP, the closest published prior art: their 
 ## 1. What gets hashed into `run_id` (the chain)
 
 ```
-run_id = sha256(h_pool || h_descriptions || h_queries || h_oracles || h_endpoints || h_environment || h_harness)
+run_id = sha256(h_pool || h_descriptions || h_queries || h_oracles || h_endpoints || h_embedder || h_environment || h_harness)
 ```
 
 | Artifact | File | What it pins | Why it matters |
 |---|---|---|---|
-| Server pool | `pool/servers_pinned.yaml` | Per server: name, git SHA (source-built), npm/pip version (installable), install command, reachability tier, COI tag | RAG-MCP failure mode: unpinned registry drifted; our pool cannot. |
+| Server pool | `pool/servers_pinned.yaml` | Per server: name, git SHA (source-built), npm/pip version (installable), Docker digest, install command, reachability tier, role tag (chart-primary / query-primary / distractor / distractor-only-author-disclosed) | RAG-MCP failure mode: unpinned registry drifted; our pool cannot. |
 | Tool descriptions + schemas | `pool/descriptions.json` | Per server, captured at install: each tool's name, description, JSON schema verbatim | TC.1 requirement: description drift changes which tools compete for selection. |
-| Query set | `tasks/v1/queries.jsonl` | 50 queries (v1), each with: query text, ground-truth target, difficulty-quartile tag, contamination-tier tag | SWE-Bench Pro pattern. Closes ABC R.1 + R.3. |
+| Query set | `tasks/v1/queries.jsonl` | 40 queries (v1: 30 public + 10 held-back), each with: query text, ground-truth target, difficulty-quartile tag, contamination-tier tag, `primary_server` (one of GitHub MCP / DeepWiki / Git MCP per best-fit-per-query routing) | SWE-Bench Pro pattern. Closes ABC R.1 + R.3. The originally planned 10-query sealed (OCI proprietary) tier was dropped 2026-05-25; see `QUERY_SET_HYGIENE.md §2`. |
 | Oracle | `oracles/pass_v1.py` | The pass-rate scoring function source | If the oracle changes, prior trial results are no longer comparable. |
 | Model endpoints | `models/endpoints.json` | Per model: API URL, checkpoint identifier (e.g., `claude-sonnet-4-6-20260131`), temperature, max_tokens, system-prefix template, nonce-policy | Pinning the API call shape. Model checkpoints can silently roll on vendor side; see §3. |
+| **Embedder** | `models/embedder.json` | Per active embedder: provider (`openai` / `bge-m3` / `voyage`), model name + API version, embedding dim, normalization policy. v1 primary = OpenAI `text-embedding-3-large`; robustness = BGE-M3 + Voyage `voyage-3-large`. Added as the 8th artifact 2026-05-25. | The embedder is used in the retriever-ON arm (`RESEARCH_DESIGN.md §3.5`) and in adversarial audits A1 (keyword stuffing) + A5 (near-duplicate pair). Swapping embedders forces a new `run_id`. |
 | Environment | `environment.lock` | Docker image SHA, OS info, Python version, MCP SDK version, key library versions | Removes "works on my machine" failures. |
 | Harness | `git rev-parse HEAD` at release | The harness code itself | The runner that orchestrates trials. |
 
-All seven hashes are written into a single line in `pool/RELEASE.json`. That line, hashed, IS the `run_id`. Any artifact mutation forces a new `run_id`. There is no backwards-compatibility mode.
+All eight hashes are written into a single line in `pool/RELEASE.json`. That line, hashed, IS the `run_id`. Any artifact mutation forces a new `run_id`. There is no backwards-compatibility mode.
 
 ### Boundary condition: what about live data sources?
 
@@ -44,6 +45,12 @@ Some artifacts CANNOT be pinned to a fixed hash without losing semantic meaning:
 
 - **GitHub MCP** queries hit the live GitHub API; results depend on the state of GitHub at call time.
   - Mitigation: pin queries to repos + commits that are immutable in recoverable history (GitHub Archive Program, or local clones at frozen SHAs). For query types that don't admit this, document the drift window and restrict collection to a 48-hour window.
+- **DeepWiki MCP** is a hosted Cognition Labs service at `mcp.deepwiki.com/mcp`. Index drift on the order of ~5 days for badged repos (per `research/install_deepwiki_2026-05-25.md`); no Docker pin available.
+  - Mitigation: **hosted-service snapshot bundle** (added 2026-05-25). At pool install time, capture and commit a bundle containing the JSON-RPC `initialize` handshake, the full `tools/list` response, and a representative-query trace dated to the pool install date. The bundle hashes into `h_descriptions`. Re-runs verify the live service still returns matching handshake and tools/list (drift detection); content drift in `ask_question` responses is acknowledged and logged as a controlled covariate.
+- **Context7** is hosted by Upstash; library docs index can drift per-library. Pin command is `npx @upstash/context7-mcp@2.3.0` (NOT 3.0.0 — the latter is a stateful Redis rewrite that contaminates trial isolation per `research/install_context7_2026-05-25.md`).
+  - Mitigation: same snapshot-bundle approach as DeepWiki; per-library docs version is captured in trial-trace logs.
+- **Sentry MCP** runs locally via `npx @sentry/mcp-server@0.29.0` but queries hit `sentry.io`.
+  - Mitigation: use a throwaway Sentry project for the benchmark; filter mutation tools at MCP-client level (19 of 24 tools allowed); the project's state is part of the snapshot bundle.
 - **Web-fetch / Brave Search distractors** are live.
   - Acknowledged drift. Distractors do not influence ground truth — only the size of the prompt and which servers crowd. Mitigation: snapshot per-trial tool-call traces; the trace itself becomes the audit artifact.
 - **Anthropic prompt cache** is opaque hidden state. Same input + same temperature can produce different outputs depending on cache state.
@@ -182,7 +189,7 @@ A bumped `run_id` is a hard break. Results across `run_id`s are not aggregated. 
 ## 7. What this document does NOT cover
 
 - **Contamination defense.** See `QUERY_SET_HYGIENE.md` (5-gram check, GPL filter, post-cutoff queries, three-tier access). Pending Fri PM.
-- **COI sensitivity.** See `RESEARCH_DESIGN.md §11` (leave-OCI-out analysis).
+- **Author disclosure / COI sensitivity.** See `RESEARCH_DESIGN.md §11`. Operationalized as full removal of OCI from the distractor pool (OCI is no longer a `primary_server` on any query as of 2026-05-25).
 - **Responsible disclosure.** See `RESEARCH_DESIGN.md §11` (7-day pre-disclosure to maintainers).
 - **Statistical analysis.** See `RESEARCH_DESIGN.md §4` (MPD, paired bootstrap, Bonferroni).
 - **Padded-N=1 padding strategy.** See v1.2 SPEC item b (next doc).
@@ -193,7 +200,7 @@ A bumped `run_id` is a hard break. Results across `run_id`s are not aggregated. 
 
 Mandatory implementation gates before the harness runs any pilot trial:
 
-1. **`harness/preflight.py`** MUST verify all seven hashes and assemble `run_id`. Aborts on mismatch.
+1. **`harness/preflight.py`** MUST verify all eight hashes (the 7 originals plus `h_embedder` added 2026-05-25) and assemble `run_id`. Aborts on mismatch.
 2. **`harness/seed.py`** MUST implement `cell_seed = sha256(run_id || model || N || query_id || ordering_id)` exactly as §2 specifies.
 3. **`harness/smoke/<server>.py`** for each pinned server MUST be runnable and produce a SHA + description hash for comparison against pinned values.
 4. **Trial result schema** MUST embed `run_id`, `cell_seed`, `trial_seed`, and `model_api_response_fingerprint` (where exposed). Results without these fields are rejected at emission time.

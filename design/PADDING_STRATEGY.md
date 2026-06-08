@@ -20,7 +20,7 @@ The spec is binding for the Saturday 2026-05-23 pilot, the v1 full sweep, and th
 
 The padded-N=1 prompt contains:
 
-1. **One real primary tool** for the query (e.g., for a code-retrieval query, OCI / GitHub MCP / Git MCP / Aider MCP / Fetch MCP per SERVER_POOL.md, whichever is being tested).
+1. **One real primary tool** for the query (for code-retrieval queries, GitHub MCP / DeepWiki / Git MCP per `design/SERVER_POOL.md` query-primary subset; best-fit-per-query routing chooses which one for a given query).
 2. **K filler entries** drawn from a fake-tool corpus (defined below), where K is chosen by the matching protocol in §4.
 3. **No other real distractors.** This is what makes the control "N=1" semantically.
 
@@ -178,7 +178,7 @@ The pilot's go/no-go gate (PILOT_V0.md §"Sat AM go/no-go gate") includes a chec
 
 ## 7. What this does NOT cover
 
-- **Primary tool selection logic.** The primary tool for each query is fixed per SERVER_POOL.md primary list (OCI, GitHub MCP, Git MCP, Aider MCP, Fetch MCP). Which one is primary for a given query depends on the query; that mapping is part of `tasks/v1/queries.jsonl`.
+- **Primary tool selection logic.** The query-primary set is GitHub MCP, DeepWiki, Git MCP (the subset of chart-primaries that have source-code-retrieval-relevant tool surfaces, per `design/SERVER_POOL.md`). Which one is primary for a given query depends on best-fit-per-query routing; that mapping lives in the `primary_server` field of `tasks/v1/queries.jsonl`. Context7 and Sentry are chart-primaries but never query-primaries (tool surfaces orthogonal to source-code retrieval).
 - **Unpadded-N=K distractor selection.** Covered by REPRODUCIBILITY.md §2.
 - **Padded-N=K for K > 1.** Not in scope for v1. Only padded-N=1 is the control.
 - **Cross-trial filler reuse.** Within a single padded-N=1 trial, no duplicates. Across trials with different `cell_seed`s, the same filler entry may appear repeatedly; this is expected and not a confound (filler is not selectable competition).

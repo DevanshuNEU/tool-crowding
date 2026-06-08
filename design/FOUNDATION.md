@@ -32,6 +32,7 @@ This document is the binding methodology gate. No harness code starts until ever
 > - **F1.** Padded-N=1 fully explains the effect within 5pp on at least 2 frontier models. The construct collapses to capacity. Project pivots to methodology-port + per-server diagnostic.
 > - **F2.** Per-server MPD Spearman rho < 0.3 across re-runs. The construct lacks operational reality. Project pivots to global N-effect-only framing.
 > - **F3.** Description-similarity-MPD correlation is r < 0.2. The construct's mechanism (semantic competition) is not the right one. Pivot to ordering effects or quality effects.
+> - **F4.** (Composition-sensitivity hypothesis, locked 2026-05-25 PM.) |MPD(orthogonal-domain pool primary) − MPD(same-domain query-primary)| ≤ 5pp at N=10 with paired-bootstrap 99% CI crossing zero. The crowd composition does not separate from raw N; the chart-primaries collapse to a "Pool primaries with respect to MPD" framing without the composition split. Project doesn't die but loses one publishable claim; query-primaries (GitHub MCP, DeepWiki, Git MCP) carry the headline alone, with Context7 + Sentry reported as named-vendor distractors.
 
 ### 1.1 What we extend
 
@@ -182,7 +183,7 @@ Goal: communicate limitations and findings responsibly.
 |---|---|---|---|
 | **R.1** | Open-source dataset | **SAT-D** | Public on launch under permissive license (TBD: MIT or Apache 2.0) |
 | **R.2** | Open-source harness | **SAT-D** | `github.com/DevanshuNEU/tool-crowding`, public on launch |
-| **R.3** | Data contamination prevention | **SAT-D** | GPL public tier + post-cutoff queries + OCI proprietary tier. Layered defense per SWE-Bench Pro + SWE-Bench Illusion. |
+| **R.3** | Data contamination prevention | **SAT-D** | GPL public tier (30 queries) + held-back validation tier (10 queries) + post-cutoff sourcing. Layered defense per SWE-Bench Pro + SWE-Bench Illusion. (The originally planned sealed OCI-proprietary tier was dropped 2026-05-25; the held-back tier already serves the contamination-backup role and no OCI v2 is in flight to validate against.) |
 | **R.4** | Consistent update plan | **PEND** | Versioning policy doc: v1.x methodology fixes, v2.x scope expansion. Held-back 20% query tier for future re-eval. |
 | **R.5** | Clearly specify capabilities | **SAT-D** | Stated: "interference among multiple installed MCP servers on code-retrieval tasks under varying N" |
 | **R.6** | Construct validity | **PEND** | Explicit Section 3 in paper: what tool-crowding measures and does not measure (not "MCP quality", not "code retrieval quality alone") |
@@ -245,7 +246,7 @@ Counted as of 2026-05-22 Fri PM (after the R.12 + R.13 trivial-baselines lock an
 
 ## 5. Pre-disclosure protocol
 
-Per-server rankings are reputationally sensitive. The 7-day pre-disclosure embargo per `../RESEARCH_DESIGN.md` §11 applies before any public release: maintainers receive their preliminary MPD, the methodology document, the harness commit SHA, raw per-trial logs for their server, and a factual-correction window. No anonymization. Each server gets a named row with a "limitations" card. Conflict-of-interest disclosure stands across the corresponding-author's affiliation with OCI.
+Per-server rankings are reputationally sensitive. The 7-day pre-disclosure embargo per `../RESEARCH_DESIGN.md` §11 applies before any public release: maintainers of all pool servers (5 chart-primaries + the 13-server distractor pool, including OCI in its distractor-only role) receive their preliminary MPD, the methodology document, the harness commit SHA, raw per-trial logs for their server, and a factual-correction window. No anonymization. Each server gets a named row with a "limitations" card. **Author disclosure**: OCI (the corresponding author's MCP server) is excluded from chart-primaries and from any `primary_server` cell; included as distractor only. The leave-OCI-out sensitivity analysis (full removal of OCI from the distractor pool) is the COI defense in the paper.
 
 Maintainer corrections flow through the maintainer-disclosure issue template; immutable v1 rows remain even after v2 re-runs land.
 

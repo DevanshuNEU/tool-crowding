@@ -44,7 +44,7 @@ For the panel (Opus 4.7, Sonnet 4.6, GPT-5-class, Gemini 2.5-class), the binding
 
 - **Public tier (30 queries):** content published strictly after 2026-01-31. Binding.
 - **Held-back tier (10 queries):** content published strictly after 2026-04-30 (3-month buffer past cutoff for future re-eval defense). Stricter than public tier on purpose.
-- **Sealed tier (10 queries from OCI proprietary):** any date — OCI is a private codebase authored by the corresponding author, not in any public training corpus (`design/SERVER_POOL.md` COI disclosure). Date constraint is N/A for this tier.
+- **(The originally planned sealed tier of 10 OCI-proprietary queries was dropped 2026-05-25 PM.** Rationale: OCI was moved to distractor-only role (`research/oci_removal_audit_2026-05-25.md`), eliminating the leave-OCI-out sensitivity analysis the sealed tier was designed to support. The held-back tier already covers contamination-backup. No OCI v2 is in flight to validate against. The two-tier structure carries v1.)
 
 ### How a query's date is verified
 
@@ -154,9 +154,7 @@ This is SWE-Bench Pro's design pattern (`notes/swe-bench-pro.md` line 47): "Lice
 
 Same GPL constraint applies, with the additional 2026-04-30 temporal cutoff (Defense 1 per-tier).
 
-### Sealed tier (OCI proprietary)
-
-GPL constraint does not apply — the repo is private (not in any public corpus by construction). The sealed tier is the legal-barrier-clean tier by virtue of being unreachable, not by license.
+(The sealed tier was dropped 2026-05-25; see §2 per-tier date bands.)
 
 ---
 
@@ -182,15 +180,16 @@ Per `notes/swe-bench-pro.md` line 76 (SWE-Bench Pro's held-out tier as benchmark
 
 | Tier | Count | Purpose | Released? | Date band | License | Repo source |
 |---|---|---|---|---|---|---|
-| **Public** | 30 | The headline v1 numbers. Anyone reproduces. Anyone adversarially trains on these going forward. | Yes — committed to `tasks/v1/queries.jsonl` on Mon May 25 launch. | post-2026-01-31 | GPL family | Low-traffic eligible (Defense 2) |
-| **Held-back** | 10 | Reserved for v1.1 / v2 re-eval when models have likely been trained on the public tier. Defends against retraining-on-tool-crowding. | No — committed to `tasks/v1/held_back.jsonl` but `.gitignore`-d in the public repo. Devanshu retains. Released at v2 launch or 12 months from v1 launch, whichever comes later. | post-2026-04-30 | GPL family | Low-traffic eligible |
-| **Sealed (OCI)** | 10 | Methodology disclosure only; never released as data. Used in the paper's COI sensitivity analysis (RESEARCH_DESIGN.md §11 "leave-OCI-out") to demonstrate that the N-curve survives without OCI being a query target. | No — only the methodology of generation is described publicly. Queries themselves are private. | N/A | N/A | OCI proprietary |
+| **Public** | 30 | The headline v1 numbers. Anyone reproduces. Anyone adversarially trains on these going forward. | Yes — committed to `tasks/v1/queries.jsonl` at launch. | post-2026-01-31 | GPL family | Low-traffic eligible (Defense 2) |
+| **Held-back** | 10 | Reserved for v1.1 / v2 re-eval when models have likely been trained on the public tier. Defends against retraining-on-tool-crowding. Also serves as the contamination-backup pool (replaces a public-tier batch if any post-launch contamination report fires). | No — committed to `tasks/v1/held_back.jsonl` but `.gitignore`-d in the public repo. Devanshu retains. Released at v2 launch or 12 months from v1 launch, whichever comes later. | post-2026-04-30 | GPL family | Low-traffic eligible |
+
+(The originally planned 10-query sealed tier was dropped 2026-05-25; see §2 per-tier date bands for the rationale.)
 
 ### How the tiers compose on launch
 
-Mon May 25 public launch ships only the public tier. The methodology of the held-back and sealed tiers is described in the launch artifact ("we held back 10 queries for v1.1 re-eval; we also generated 10 OCI-internal queries for COI sensitivity") with sample sizes but no content.
+The public launch ships only the public tier (30 queries). The methodology of the held-back tier is described in the launch artifact ("we held back 10 queries for v1.1 re-eval") with sample size but no content.
 
-Any cell that involves OCI as primary server runs queries from all three tiers. The leave-OCI-out sensitivity analysis runs queries from public + held-back only (excludes OCI-as-primary-server cells); the headline N-curve must survive this analysis with the qualitative slope preserved or the COI is load-bearing for the result.
+OCI is in the pool as a distractor only (per `design/SERVER_POOL.md` author disclosure and `RESEARCH_DESIGN.md §11`), so no query is targeted at OCI as `primary_server`. The leave-OCI-out sensitivity analysis (full removal of OCI from the distractor pool) is the COI defense in the paper; the headline N-curve must survive this analysis with the qualitative slope preserved or the OCI distractor is load-bearing for the result.
 
 ---
 
@@ -214,7 +213,6 @@ Reason: CoIR's component datasets (CosQA 2021, CodeSearchNet 2019, APPS) all pre
 4. Construct a query as: `(natural-language description from issue) → (ground-truth: the modified function in the merged patch)`.
 5. Score each candidate query on: difficulty (per-quartile by snippet length), retrieval-friendliness (single function vs multi-file), license check, 5-gram check.
 6. Accept queries that pass all defenses; sort into tiers by date band.
-7. Sealed tier: parallel procedure on OCI's private commit history.
 
 This is the SWE-Bench Pro pattern (`notes/swe-bench-pro.md` line 16) at our scale.
 
@@ -233,7 +231,7 @@ The harness's preflight check refuses to start the pilot unless every item below
 3. **Repo eligibility check.** Every query's `source_repo` is not in the banned-repos list (Defense 2). Star count and download count are within thresholds.
 4. **5-gram check.** Every query's ground-truth code has ≤ 1 high-entropy 5-gram public hit. Cached results from GitHub Code Search + Google Custom Search are committed to `tasks/v1/contamination_audit.jsonl` for reproducibility.
 5. **Per-repo cap check.** No source repo contributes > 10 public-tier queries or > 7 held-back-tier queries.
-6. **Tier-count check.** Public tier has exactly 30, held-back exactly 10, sealed exactly 10. Hard counts, no fuzz.
+6. **Tier-count check.** Public tier has exactly 30, held-back exactly 10. Hard counts, no fuzz. (Sealed tier dropped 2026-05-25; see §2 per-tier date bands.)
 7. **Tokenizer cache check.** Every query carries pre-computed token counts under the panel's tokenizers for use in PADDING_STRATEGY.md §4 token-matching.
 
 The output of these seven checks is a `tasks/v1/verification_report.md` committed alongside `queries.jsonl`. The report is part of the public launch artifact; it documents the defenses in a reviewer-readable form.
@@ -260,7 +258,7 @@ These must close before `tasks/v1/queries.jsonl` is committed for the launch run
 2. **Verify Gemini 2.5-class training cutoff.** Search Google's docs for the official cutoff. Update `design/MODEL_VERSIONS.md`. Owner: Devanshu. Due: before queries.jsonl lock.
 3. **Enumerate eligible source repos.** Pull a list of 20-30 candidate repos satisfying Defense 2 (low-traffic + GPL + active in post-2026-02-01 window). Owner: Devanshu. Due: Fri PM (today).
 4. **Pilot-subset queries (3 queries).** Mine 3 queries against the eligible-repo list for the Sat pilot. Run the full verification workflow (§9) on them. Commit to `tasks/v1/queries.jsonl` as a 3-row file for the pilot run. Owner: Devanshu. Due: Fri PM (today) or Sat AM at the latest.
-5. **Launch-subset queries (30 public + 10 held-back + 10 sealed = 50 total).** Mine + verify after the pilot is green. Owner: Devanshu. Due: Sun for Mon launch.
+5. **Launch-subset queries (30 public + 10 held-back = 40 total).** Mine + verify after the pilot is green. Owner: Devanshu. Due: before launch. (Sealed tier of 10 OCI-proprietary queries dropped 2026-05-25; see §2 per-tier date bands.)
 6. **Failure-mode taxonomy LLM-judge prompt.** PILOT_V0.md pre-flight item; not strictly query-hygiene but tightly coupled to the failure-mode tags on each query trial. Owner: Devanshu. Due: Fri PM.
 
 ---
@@ -271,14 +269,14 @@ These must close before `tasks/v1/queries.jsonl` is committed for the launch run
 - **Padded-N=1 control padding strategy.** See `design/PADDING_STRATEGY.md`.
 - **Per-server tool descriptions.** See `design/SERVER_POOL.md` + the v1.2 `pool/descriptions.json` artifact in REPRODUCIBILITY.md §1.
 - **Statistical analysis of pass-rate by tier.** See RESEARCH_DESIGN.md §4 (MPD, paired bootstrap, Bonferroni). The contamination-tier comparison (public vs held-back vs sealed) is mentioned as a paper section in `notes/swe-bench-illusion.md` "What to steal" #5 ("Pilot a contamination ablation as Section 5 of the paper"); v1 decision deferred.
-- **COI sensitivity (leave-OCI-out).** See RESEARCH_DESIGN.md §11. The sealed tier supports this analysis but the analysis itself lives in §11.
+- **COI sensitivity (leave-OCI-out).** See RESEARCH_DESIGN.md §11. Now operationalized as full removal of OCI from the distractor pool (OCI is no longer a `primary_server` on any query as of 2026-05-25); the analysis lives in §11.
 - **Re-aggregation procedure on a v1.1 retraction.** See REPRODUCIBILITY.md §6 v1.x versioning.
 
 ---
 
 ## 13. Why this scope, not more
 
-The doc is binding for a 50-query v1 set, not for a generic code-retrieval benchmark. At this scale, several pieces that SWE-Bench Pro can afford (their 1,865-query scale supports 41 repos, 100/repo cap, three full tiers of 731 / 858 / 276) compress to smaller versions for tool-crowding (5-10 repos, 7-10/repo cap, three tiers of 30 / 10 / 10). The defenses are the same shape; the magnitudes are scaled.
+The doc is binding for a 40-query v1 set (30 public + 10 held-back), not for a generic code-retrieval benchmark. At this scale, several pieces that SWE-Bench Pro can afford (their 1,865-query scale supports 41 repos, 100/repo cap, three full tiers of 731 / 858 / 276) compress to smaller versions for tool-crowding (5-10 repos, 7-10/repo cap, two tiers of 30 / 10). The defenses are the same shape; the magnitudes are scaled.
 
 The doc deliberately does NOT specify which exact 30 queries we'll use, only the gates each candidate must pass. The mining is a separate execution step (§11 actions 4 + 5) done by Devanshu over the weekend. Specifying queries in this doc would couple the methodology spec to a particular content slice and create a release-coordination problem.
 
