@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from typing import ClassVar, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # Embedder is the one Config knob users swap day-to-day (locked
@@ -98,6 +98,13 @@ class Config(BaseModel):
     distractors: list[str]
     N: list[int]
     runs_per_cell: int
+    # Distractor orderings per cell (ordering_seed 0..orderings-1). SPEC.md §5
+    # specifies 5 for the confirmatory pilot; an MVE may use fewer to cut trial
+    # count (SPEC.md §5: "in MVE: 3 per cell to fit time budget"). Value-hashed
+    # into run_id (identity-rule addition 2026-06-08), so a sweep at a different
+    # ordering count is reproducibility-honest and gets a distinct run_id. Default
+    # 5 preserves the pilot's cell structure when the field is omitted.
+    orderings: int = Field(default=5, ge=1)
     model: str
     host: str
     seed: int = 42

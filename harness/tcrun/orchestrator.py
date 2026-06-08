@@ -247,8 +247,10 @@ class Orchestrator:
         primaries = list(self.config.primary_servers)
         Ns = list(self.config.N)
         runs_per_cell = self.config.runs_per_cell
-        # 5 orderings per cell per SPEC.md §5; honored by ordering_seed 0..4.
-        orderings = list(range(5))
+        # Orderings per cell, honored by ordering_seed 0..orderings-1. SPEC.md §5
+        # default is 5 (confirmatory pilot); configurable down to fit an MVE budget
+        # (SPEC.md §5 sanctions 3). Set via config.orderings (value-hashed into run_id).
+        orderings = list(range(self.config.orderings))
         queries_list: list[Any] = list(self._queries) if self._queries else ["__no_queries__"]
 
         any_filterable = any(getattr(q, "primary_server", None) for q in queries_list)

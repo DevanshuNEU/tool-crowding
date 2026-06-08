@@ -18,15 +18,16 @@
 #   tcrun run -c configs/nsweep-minimal.yaml --cost-cap 6
 #
 # COST (honest estimate at the measured ~$0.20/trial from the similar-probe run):
-#   orderings are hardcoded to 5 (SPEC.md S5; not config-exposed), so per N level =
-#   5 orderings x runs_per_cell. With runs_per_cell=1 and the padded-N=1 control on:
-#     N=1   : 5 (crowding) + 5 (padded-N=1 capacity control) = 10 trials
-#     N=3   : 5 trials
-#     N=5   : 5 trials
-#     TOTAL : 20 trials  ~  $4.00
-#   Set include_padded_n1_control: false to drop to 15 trials (~$3), but the padded
-#   control is the load-bearing capacity-vs-discrimination check (kill criterion #3),
-#   so keep it on unless you only want the headline curve.
+#   per N level = orderings x runs_per_cell. With orderings=2, runs_per_cell=1, and
+#   the padded-N=1 control on:
+#     N=1   : 2 (crowding) + 2 (padded-N=1 capacity control) = 4 trials
+#     N=3   : 2 trials
+#     N=5   : 2 trials
+#     TOTAL : 8 trials  ~  $1.60
+#   orderings=2 is the cost floor for a directional demo; SPEC.md §5 sanctions 3 for an
+#   MVE and the funded pilot uses 5. Raise `orderings` for tighter position-bias control.
+#   Set include_padded_n1_control: false to drop to 6 trials, but the padded control is
+#   the load-bearing capacity-vs-discrimination check (kill criterion #3); keep it on.
 
 # Path-typed fields (content-hashed into run_id) -- identical artifacts to mve.yaml.
 task_set: tasks/github_smoke.jsonl     # 1 named-target task, primary_server=github_mcp.
@@ -56,6 +57,7 @@ distractors:
 
 N: [1, 3, 5]
 runs_per_cell: 1
+orderings: 2                             # cost floor for a directional demo (pilot uses 5; SPEC §5 MVE sanctions 3)
 model: claude-sonnet-4-6
 host: claude-desktop
 seed: 42
