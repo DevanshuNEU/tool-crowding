@@ -337,8 +337,46 @@ class Orchestrator:
 
     # ---- main loop ----
 
+    async def _maybe_record_deepwiki_index(self) -> None:
+        """Record deepwiki's per-repo index state at run start (Phase F pre-reg).
+
+        No-op unless deepwiki is in the configured pool and a pool_factory is present.
+        Opens a deepwiki-only pool, calls read_wiki_structure per distinct task repo,
+        and writes run_dir/deepwiki_index.json (response hash + path + fetched_at per
+        repo). Best-effort: any failure is logged and recorded, never raised, so an
+        index-probe hiccup cannot waste the trial spend. Idempotent on resume (skips
+        if the manifest already exists).
+        """
+        from tcrun import deepwiki_index as dwi
+
+        if (self.run_dir / "deepwiki_index.json").exists():
+            return
+        pool_servers = set(self.config.primary_servers) | set(self.config.distractors)
+        if dwi.DEEPWIKI_SERVER not in pool_servers or self._pool_factory is None:
+            return
+        repos = [r for r in (getattr(q, "source_repo", None) for q in self._queries) if r]
+        if not repos:
+            return
+        try:
+            async with self._pool_factory([dwi.DEEPWIKI_SERVER]) as pool:
+                sess = pool.get(dwi.DEEPWIKI_SERVER) if hasattr(pool, "get") else None
+                if sess is None:
+                    return
+                target = getattr(sess, "session", sess)
+
+                async def call_structure(repo: str) -> Any:
+                    return await asyncio.wait_for(
+                        target.call_tool(dwi.STRUCTURE_TOOL, {"repoName": repo}),
+                        timeout=30.0,
+                    )
+
+                await dwi.record_deepwiki_index(repos, call_structure, self.run_dir)
+        except Exception as e:  # noqa: BLE001 - best-effort; never abort the run
+            log.warning("deepwiki index recording failed: %r", e)
+
     async def run(self) -> dict[str, Any]:
         """Dispatch all cells; return the summary dict."""
+        await self._maybe_record_deepwiki_index()
         cells = self.enumerate_cells()
         # Group by (primary, N, ordering, padded) so we can open one pool per
         # group and reuse it across repetitions. Cell-level hermetic per SPEC §3.
