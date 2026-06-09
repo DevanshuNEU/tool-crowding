@@ -1,19 +1,22 @@
-# configs/stage1-factorial.yaml -- Phase F Stage 1 within-task 2x2 (LAUNCH-BLOCKED)
+# configs/stage1-factorial.yaml -- Phase F Stage 1 within-task 2x2 (PRE-LAUNCH; not yet runnable)
 #
-# *** LAUNCH-BLOCKED (2026-06-08 readiness audit) -- DO NOT RUN AS-IS ***
-#   B1 DEAD LURES (deal-breaker, methodology): all 5 anchors fail the dual date bound;
-#      deepwiki does not index their target symbols (see vault
-#      stage1-task-set-provenance-2026-06-03.md, 2026-06-04 probe). The lure cannot
-#      SOLVE, so the headline mis-routing effect is unmeasurable; only DCR_trial (touch)
-#      would survive. Provenance verdict: "NOT usable for Stage 1 as-is." Fix = re-source
-#      anchors satisfying model_cutoff < symbol_introduced < deepwiki_index_date, or force
-#      a re-index, or rethink the lure. This is Devanshu's call.
+# *** PRE-LAUNCH PREREQUISITES (2026-06-08) -- NOT a lure problem ***
+#   B1 LURE FRESHNESS (RESOLVED 2026-06-04; my 2026-06-08 audit overstated it): the 5
+#      anchors' deepwiki lures are stale (symbols postdate the index) so deepwiki cannot
+#      SOLVE them. But the PRIMARY metric DCR_trial is a CALLABILITY signal -- does the
+#      agent ROUTE to deepwiki -- decided from the pinned tool description + framing +
+#      temperature, independent of index freshness. Per the 2026-06-04 call
+#      (lure-design-rethink-2026-06-04.md, direction C): DCR_trial carries Stage 1 with the
+#      CURRENT anchors; only the SSA-solve secondary is freshness-conditional. Re-sourcing
+#      is OPTIONAL, not a blocker. (Earlier banner wrongly called this a deal-breaker.)
 #   B2 TEMPERATURE (RESOLVED 2026-06-08): temp is now Config.temperature, threaded into
-#      SamplingParams in runner.py and value-hashed into run_id (TC_TEMPERATURE env
-#      override available). Set to 1.0 below per the pre-reg. No longer a blocker.
-#   COST REALITY: registered Stage 1 is ~$60 (cost-cap $80), preceded by Stage 0 ~$12.
-#      The earlier "~$20" estimate was temp-0 and wrong for the confirmatory run.
-#   Clear B1 + B2 and run the no-MCP floor before any spend.
+#      SamplingParams in runner.py and value-hashed into run_id. Set to 1.0 below.
+#   Real prerequisites before a registered Stage 1 run:
+#     P1 deepwiki-index-commit recording at run time (REQUIRED by the updated pre-reg;
+#        UNIMPLEMENTED -- the one piece of code on the critical path)
+#     P2 Phase F lock (DRAFT -> LOCKED + re-hash): DCR 0.40/0.15, temp 1.0, n=15
+#     P3 no-MCP 0/N baseline + canonical 5-gram audit (cheap; part of Stage 0/1)
+#     P4 credits (~$200 top-up; Stage 0 ~$12 -> Stage 1 ~$60, cost-cap $80) + Docker up + PAT valid
 #
 # WHY THIS EXISTS
 # The exploratory probes (FINDINGS.md) surfaced one directional signal: mis-routing
