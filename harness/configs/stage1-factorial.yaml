@@ -1,4 +1,21 @@
-# configs/stage1-factorial.yaml -- Phase F Stage 1 within-task 2x2 (DEFERRED, not yet run)
+# configs/stage1-factorial.yaml -- Phase F Stage 1 within-task 2x2 (LAUNCH-BLOCKED)
+#
+# *** LAUNCH-BLOCKED (2026-06-08 readiness audit) -- DO NOT RUN AS-IS ***
+#   B1 DEAD LURES (deal-breaker, methodology): all 5 anchors fail the dual date bound;
+#      deepwiki does not index their target symbols (see vault
+#      stage1-task-set-provenance-2026-06-03.md, 2026-06-04 probe). The lure cannot
+#      SOLVE, so the headline mis-routing effect is unmeasurable; only DCR_trial (touch)
+#      would survive. Provenance verdict: "NOT usable for Stage 1 as-is." Fix = re-source
+#      anchors satisfying model_cutoff < symbol_introduced < deepwiki_index_date, or force
+#      a re-index, or rethink the lure. This is Devanshu's call.
+#   B2 TEMPERATURE NOT WIRED (deal-breaker, engineering): pre-reg Stage 1 requires
+#      temp=1.0 (temp=0 produced the deterministic 0-lure null). runner.py hardcodes
+#      SamplingParams() (temp 0.0) and `temperature` is not a Config field, so this YAML
+#      CANNOT set it. Needs a code change (Config.temperature -> thread into SamplingParams)
+#      + a test before any run, or the launch reproduces the null at temp 0.
+#   COST REALITY: registered Stage 1 is ~$60 (cost-cap $80), preceded by Stage 0 ~$12.
+#      The earlier "~$20" estimate was temp-0 and wrong for the confirmatory run.
+#   Clear B1 + B2 and run the no-MCP floor before any spend.
 #
 # WHY THIS EXISTS
 # The exploratory probes (FINDINGS.md) surfaced one directional signal: mis-routing
