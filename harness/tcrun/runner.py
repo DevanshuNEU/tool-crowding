@@ -262,7 +262,7 @@ class AgentRunner:
             model_id=cfg.model,
             model_provider=self._model_provider,
             model_snapshot_id=self._model_snapshot_id,
-            sampling_params=SamplingParams(),
+            sampling_params=SamplingParams(temperature=cfg.temperature),
             ordering_seed=cell.ordering_seed,
             tool_listing_strategy=cfg.tool_listing_strategy,
             system_prompt_variant=cfg.system_prompt_variant,

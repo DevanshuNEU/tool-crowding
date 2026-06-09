@@ -109,6 +109,15 @@ class Config(BaseModel):
     host: str
     seed: int = 42
 
+    # Sampling temperature sent to the model. Default 0.0 is the deterministic
+    # setting the exploratory probes used; the Phase F confirmatory factorial
+    # requires 1.0 (PRE_REGISTRATION.md Phase F Stage 1: "the effect needs
+    # stochastic trajectories; temp=0 gave the deterministic 0-lure result").
+    # Runtime-swappable via TC_TEMPERATURE (load_config); value-hashed into run_id
+    # so a temperature sweep is reproducibility-honest and gets a distinct run_id.
+    # Range 0.0-1.0 (Anthropic rejects temperature > 1.0 for Claude).
+    temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+
     tool_listing_strategy: Literal["full", "retriever-on", "oracle-filter"] = "full"
     # Top-k for the retriever-ON arm. Default 5 matches RAG-MCP §3 + our
     # pre-registration; varying k produces a new run_id (value-hashed) so any
@@ -227,4 +236,21 @@ def load_config(path: Path | str) -> Config:
             file=sys.stderr,
         )
         raw["system_prompt_variant"] = env_variant
+    env_temp = os.getenv("TC_TEMPERATURE")
+    if env_temp:
+        try:
+            temp_val = float(env_temp)
+        except ValueError:
+            print(
+                f"[load_config] WARNING: TC_TEMPERATURE={env_temp!r} is not a float; "
+                f"ignoring and using the YAML/default value.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"[load_config] TC_TEMPERATURE={env_temp!r} overrides YAML temperature "
+                f"(resolved Config hashes into a new run_id)",
+                file=sys.stderr,
+            )
+            raw["temperature"] = temp_val
     return Config(**raw)

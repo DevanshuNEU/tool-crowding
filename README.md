@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-326%20passing-brightgreen.svg)](harness/tests/)
+[![Tests](https://img.shields.io/badge/tests-336%20passing-brightgreen.svg)](harness/tests/)
 [![Pre-registered](https://img.shields.io/badge/predictions-pre--registered-purple.svg)](design/PRE_REGISTRATION.md)
 [![Status](https://img.shields.io/badge/status-pre--pilot-orange.svg)](CHANGELOG.md)
 [![Cite](https://img.shields.io/badge/cite-CITATION.cff-blueviolet.svg)](CITATION.cff)
@@ -30,12 +30,12 @@ When you install 10 to 20 Model Context Protocol servers simultaneously (the rea
 
 ## Status
 
-**Pre-pilot.** Methodology locked across 10 binding design docs. 12-module Python harness with 326 passing pytest cases. 199-entry fake-tool corpus. Five hand-curated oracle smoke tests (5/5 pass). Pre-registered predictions and four scenario abstracts committed before the pilot runs. One round of cheap exploratory probes is in — 19 trials, one task, one model (see [`FINDINGS.md`](FINDINGS.md)) — directional signal only, not pre-registered results.
+**Pre-pilot.** Methodology locked across 10 binding design docs. 12-module Python harness with 336 passing pytest cases. 199-entry fake-tool corpus. Five hand-curated oracle smoke tests (5/5 pass). Pre-registered predictions and four scenario abstracts committed before the pilot runs. One round of cheap exploratory probes is in — 19 trials, one task, one model (see [`FINDINGS.md`](FINDINGS.md)) — directional signal only, not pre-registered results.
 
 | Milestone                                | State                          |
 | ---------------------------------------- | ------------------------------ |
 | Methodology locked (10 design docs)      | done                           |
-| Harness + corpus + tests                 | done — 326 tests passing       |
+| Harness + corpus + tests                 | done — 336 tests passing       |
 | Exploratory probes (cheap falsification) | done — 19 trials, exploratory  |
 | Pre-registered pilot                     | gated on API credits           |
 | Public launch + arXiv preprint draft     | gated on the pilot             |
@@ -64,7 +64,7 @@ git clone https://github.com/DevanshuNEU/tool-crowding
 cd tool-crowding/harness
 python -m venv .venv
 .venv/bin/pip install -e ".[dev,analysis]"
-.venv/bin/python -m pytest tests/   # 326 tests, ~7 seconds
+.venv/bin/python -m pytest tests/   # 336 tests, ~7 seconds
 ```
 
 Running a sweep against the Anthropic API requires `ANTHROPIC_API_KEY` and the pinned server pool. See [`harness/SPEC.md`](harness/SPEC.md) for the CLI and [`design/REPRODUCIBILITY.md`](design/REPRODUCIBILITY.md) for the 7-artifact identity chain.

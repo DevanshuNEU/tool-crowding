@@ -9,7 +9,7 @@ Real users install 10 to 20 MCP servers simultaneously. Existing benchmarks use 
 ## Status (as of v0.1.0-pre-pilot)
 
 - **Methodology**: locked across 10 binding design docs in `design/`
-- **Harness**: 12-module `tcrun` Python package + 326 passing pytest cases
+- **Harness**: 12-module `tcrun` Python package + 336 passing pytest cases
 - **Fake-tool corpus**: 199 entries shipped at `design/fake_tool_corpus.jsonl`
 - **Server pool**: 18-server pool (5 chart-primaries + 13 distractors); 16 pinned in `harness/tcrun/servers_pinned.yaml` (Context7 + Sentry, both API-key-gated, pending)
 - **Pilot**: 144 main trials + 30 retriever robustness + 50 RAG-MCP replication = 224 total, pre-registered

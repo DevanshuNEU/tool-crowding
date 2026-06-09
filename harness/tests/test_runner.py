@@ -302,6 +302,42 @@ def test_agent_runner_propagates_retriever_top_k(tmp_path: Path):
     assert inputs.tool_listing_strategy == "retriever-on"
 
 
+def test_agent_runner_threads_temperature(tmp_path: Path):
+    """cfg.temperature reaches the per-trial SamplingParams (Phase F needs temp=1.0)."""
+    cfg = _build_config(tmp_path).model_copy(update={"temperature": 1.0})
+    runner = AgentRunner(
+        harness=_RecordingHarness(),
+        pool_sessions={},
+        embedder_spec={"provider": "openai", "model": "m", "dimension": 1},
+        config=cfg,
+        env=_fingerprint(),
+        model_snapshot_id="snap",
+        model_provider="anthropic",
+        oracle_version="v",
+        harness_version="h",
+    )
+    inputs = runner._build_inputs(_cell(cfg.model), _query())
+    assert inputs.sampling_params.temperature == 1.0
+
+
+def test_agent_runner_temperature_defaults_zero(tmp_path: Path):
+    """A default config keeps the deterministic temp=0.0 in the trial inputs."""
+    cfg = _build_config(tmp_path)
+    runner = AgentRunner(
+        harness=_RecordingHarness(),
+        pool_sessions={},
+        embedder_spec={"provider": "openai", "model": "m", "dimension": 1},
+        config=cfg,
+        env=_fingerprint(),
+        model_snapshot_id="snap",
+        model_provider="anthropic",
+        oracle_version="v",
+        harness_version="h",
+    )
+    inputs = runner._build_inputs(_cell(cfg.model), _query())
+    assert inputs.sampling_params.temperature == 0.0
+
+
 # ---------------------------------------------------------------------------
 # Default factories
 # ---------------------------------------------------------------------------
