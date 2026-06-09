@@ -8,11 +8,9 @@
 #      would survive. Provenance verdict: "NOT usable for Stage 1 as-is." Fix = re-source
 #      anchors satisfying model_cutoff < symbol_introduced < deepwiki_index_date, or force
 #      a re-index, or rethink the lure. This is Devanshu's call.
-#   B2 TEMPERATURE NOT WIRED (deal-breaker, engineering): pre-reg Stage 1 requires
-#      temp=1.0 (temp=0 produced the deterministic 0-lure null). runner.py hardcodes
-#      SamplingParams() (temp 0.0) and `temperature` is not a Config field, so this YAML
-#      CANNOT set it. Needs a code change (Config.temperature -> thread into SamplingParams)
-#      + a test before any run, or the launch reproduces the null at temp 0.
+#   B2 TEMPERATURE (RESOLVED 2026-06-08): temp is now Config.temperature, threaded into
+#      SamplingParams in runner.py and value-hashed into run_id (TC_TEMPERATURE env
+#      override available). Set to 1.0 below per the pre-reg. No longer a blocker.
 #   COST REALITY: registered Stage 1 is ~$60 (cost-cap $80), preceded by Stage 0 ~$12.
 #      The earlier "~$20" estimate was temp-0 and wrong for the confirmatory run.
 #   Clear B1 + B2 and run the no-MCP floor before any spend.
@@ -82,10 +80,11 @@ distractors:
 
 N: [4]
 runs_per_cell: 1
-orderings: 3                             # position-bias control; see cost ladder above
+orderings: 3                             # 5 queries x 3 orderings = 15 trials/cell (pre-reg n>=15)
 model: claude-sonnet-4-6
 host: claude-desktop
 seed: 42
+temperature: 1.0                         # pre-reg Stage 1: stochastic trajectories (temp=0 gave the null)
 
 tool_listing_strategy: full              # retriever OFF: the honest crowding condition
 include_padded_n1_control: false         # this arm isolates framing x ambiguity, not capacity
