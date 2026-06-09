@@ -16,7 +16,8 @@
 #        per-repo read_wiki_structure response hash + timestamp at run start; gated on
 #        deepwiki in pool, best-effort, idempotent on resume; 9 tests). Reframes the pre-reg
 #        field from "index commit" to "index-response digest + timestamp" -- fold in at P2 lock.
-#     P2 Phase F lock (DRAFT -> LOCKED + re-hash): DCR 0.40/0.15, temp 1.0, n=15
+#     P2 Phase F lock: DONE 2026-06-08 (LOCKED in design/PRE_REGISTRATION.md; thresholds
+#        DCR 0.40/0.15, temp 1.0, n=15, Q=5, N=4; + wger positive-control arm)
 #     P3 no-MCP 0/N baseline + canonical 5-gram audit (cheap; part of Stage 0/1)
 #     P4 credits (~$200 top-up; Stage 0 ~$12 -> Stage 1 ~$60, cost-cap $80) + Docker up + PAT valid
 #

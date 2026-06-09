@@ -4,6 +4,7 @@ locked: 2026-05-21 Thu PM (before Saturday pilot)
 binding: yes — predictions cannot be changed after pilot data lands
 pilot_date: 2026-05-23 (Saturday)
 construct: discrimination interference (per FOUNDATION.md §1.0)
+phase_f_locked: 2026-06-08 (Stage 1 confirmatory 2x2; binding before any Phase F data)
 ---
 
 # Pre-registration
@@ -92,13 +93,17 @@ This document locks predictions BEFORE the pilot runs. Per FOUNDATION.md §1.0 f
 - The scenario assignments above.
 - The harness as the lasting contribution regardless of scenario.
 
-## Phase F: factorial framing × ambiguity (DRAFT — lock pending)
+## Phase F: factorial framing × ambiguity (LOCKED 2026-06-08)
 
-> **STATUS: DRAFT, not yet binding.** Added 2026-06-01 BEFORE any confirmatory
-> data (same integrity basis as P5). Thresholds and n below are proposals for
-> Devanshu to review, adjust, then lock. Nothing in Phase F is binding until the
-> status flips to LOCKED and the file is re-hashed. No Phase F trial runs before
-> that flip.
+> **STATUS: LOCKED 2026-06-08 — binding.** Drafted 2026-06-01; thresholds reviewed
+> and locked by Devanshu 2026-06-08 BEFORE any Phase F confirmatory data (integrity
+> basis identical to P5). Predictions, thresholds, n, kill gates, and scenario
+> assignments below cannot be changed after Phase F data lands. The lock fingerprint
+> is the git commit that flips this status; any later change is tamper-evident in the
+> repo history. Two changes were folded in at lock: (1) the deepwiki index-recording
+> clause now describes the shipped Option-C recorder (a hashed read_wiki_structure
+> response, not a literal commit); (2) wger is added as a named positive control
+> (separate reference arm, not a 2×2 cell). No Phase F trial ran before this flip.
 
 ### Why Phase F exists (what the exploratory probes did to P1)
 
@@ -180,12 +185,23 @@ distinguish MetaTool in the paper.
   (ansible, paperless-ngx, synapse, calibre, weblate) × {ambiguous, target-named} =
   10 records. wger EXCLUDED (it generated the hypothesis → non-independent). All
   copyleft. Provenance: `~/DevVault/tool-crowding/stage1-task-set-provenance-2026-06-03.md`.
-- **deepwiki index recording (REQUIRED at run time)**: log each repo's deepwiki
-  index commit + date alongside the run. SSA-miss is interpreted only where that
-  index postdates the anchor's introducing commit. DCR_trial needs no such gate.
+- **deepwiki index recording (REQUIRED at run time)**: for each repo, record
+  deepwiki's `read_wiki_structure` response (hashed + timestamped) alongside the run
+  via `tcrun/deepwiki_index.py` (writes `run_dir/deepwiki_index.json`). deepwiki's API
+  exposes no literal index commit, so the recorded response IS the index-state
+  evidence. SSA-miss is interpreted only for (repo, run) pairs where that recorded
+  response shows the target could have been surfaced. DCR_trial needs no such gate.
 - **Sampling**: temp = 1.0 (the effect needs stochastic trajectories; temp=0 gave
   the deterministic 0-lure result), n ≥ 15 trials/cell, Q = 5 queries across 5
   repos. Paired-bootstrap CIs, B = 10,000, 99% (matching P5).
+- **Positive control (wger, separate reference arm — added at lock 2026-06-08)**: a
+  small (neutral, ambiguous) wger arm runs alongside Stage 1, NOT as a 2×2 cell (wger
+  stays excluded from the confirmatory factorial to preserve independence). wger is the
+  one anchor whose deepwiki index postdates its symbol, so the lure genuinely SOLVES
+  it; the arm confirms SSA-solve > 0, demonstrating the lure CAN bite. This makes a
+  null DCR_trial interpretable (instrument sensitivity — earning the null) and
+  validates the SSA-miss secondary. Reported as a control; never pooled into
+  H-F1/H-F2/H-F3.
 
 ### Stage 0 — exploratory replication gate (NON-binding, ~$12)
 
@@ -237,7 +253,7 @@ Hard cost-cap enforced per stage via `tcrun run --cost-cap` (orchestrator
 CostCapExceeded). No-MCP baseline arm (`include_no_mcp_baseline`, now wired) runs
 once per query as the uncontaminated floor; manual probe was 0/5.
 
-### Phase F scenario abstracts (locked at Stage 1 lock, DRAFT now)
+### Phase F scenario abstracts (LOCKED 2026-06-08)
 
 - **F-A — Clean interaction:** the 2×2 confirms H-F1; Stage 2 confirms H-F4. Story:
   "tool crowding is real but conditional — it costs you wasted tool calls (and
@@ -264,15 +280,20 @@ once per query as the uncontaminated floor; manual probe was 0/5.
 
 - Phase F (factorial framing × ambiguity) drafted 2026-06-01 by Claude in
   collaboration; spine + harm-metric forks decided by Devanshu the same day.
-  DRAFT until Devanshu reviews thresholds, flips status to LOCKED, and re-hashes
-  the file. No Phase F trial runs before the lock. Integrity basis identical to
-  P5: added before any confirmatory data.
-- Phase F refined 2026-06-04 (still pre-data, still DRAFT): after the deepwiki
+  Integrity basis identical to P5: added before any confirmatory data.
+- Phase F refined 2026-06-04 (pre-data; still DRAFT at the time): after the deepwiki
   coverage probe found all anchor symbols postdate their repo's deepwiki index,
   the callability-vs-solve distinction was made explicit and **DCR_trial became the
   sole gating metric** (Devanshu's call); SSA-miss demoted to freshness-conditional
   secondary; deepwiki-index recording added as a run-time requirement; lure strategy
   set to hybrid (direction C). All changes are pre-confirmatory-data and logged here.
+- Phase F LOCKED 2026-06-08 by Devanshu after threshold review. Thresholds frozen
+  as-is (DCR 0.40/0.15, dose 0.15, temp 1.0, n=15, Q=5, N=4; kill gates FF1/FF2;
+  scenarios F-A/F-B/F-C). Two changes folded in at lock: (1) the deepwiki
+  index-recording clause now matches the shipped Option-C recorder (hashed
+  read_wiki_structure response); (2) wger added as a named positive control
+  (separate arm, not a 2×2 cell). No Phase F trial ran before this lock; the
+  status-flipping git commit is the lock fingerprint.
 - Predictions P1-P4 locked 2026-05-21 Thu PM by Devanshu, written by Claude in collaboration.
 - Prediction P5 (composition-sensitivity) added 2026-05-25 PM as part of the locked-decision pivot (`research/oci_removal_audit_2026-05-25.md`, `research/server_pool_shortlist_2026-05-25.md`). Added BEFORE pilot data collection (the Sat 2026-05-23 pilot did not actually run; harness commissioning is track-3 work). Pre-registration integrity preserved.
 - File hash will be committed before pilot run (after harness commissioning in track-3).
