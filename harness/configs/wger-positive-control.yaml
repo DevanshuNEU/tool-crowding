@@ -1,0 +1,64 @@
+# configs/wger-positive-control.yaml -- Phase F positive control (LOCKED 2026-06-08)
+#
+# WHY THIS EXISTS (the Michelson-Morley / earn-the-null move)
+# Stage 1's primary metric DCR_trial works even with stale lures, so a NULL DCR_trial
+# is only interpretable if we can show the lure is genuinely tempting -- i.e. that it
+# CAN bite and solve at least somewhere. This arm proves exactly that. wger is the one
+# anchor whose deepwiki index POSTDATES its symbol (symbol 2026-04-10, index 2026-05-16),
+# so deepwiki's ask_question genuinely returns `sync_ingredients_bulk_or_api_task`. Run
+# the hot corner (neutral framing + ambiguous task) at temp 1.0 and confirm SSA-solve > 0
+# (solving_server == deepwiki on >=1 passing trial). If this is flat too, the instrument
+# -- not the world -- is the suspect, and a null Stage 1 cannot be trusted.
+#
+# ROLE (locked): a SEPARATE reference arm, NEVER a 2x2 cell. wger generated the
+# hypothesis (probe c6d2dae), so it is excluded from the confirmatory factorial to
+# preserve independence (see PRE_REGISTRATION.md Phase F + stage1-factorial.yaml). Report
+# SSA-solve here as an instrument-sensitivity control; NEVER pool it into H-F1/H-F2/H-F3.
+#
+# CONDITION: neutral persona x ambiguous task -- the hot corner. Factor A (persona) is
+# run-level via TC_SYSTEM_PROMPT_VARIANT; the wger task text is already the ambiguous
+# (conceptual, un-named) variant. Topology mirrors Stage 1 exactly: github_mcp grounded
+# primary + deepwiki LURE + git_mcp + filesystem_mcp, N=4, retriever OFF, temp 1.0.
+#
+# deepwiki-index recording fires automatically (deepwiki is in the pool): run start writes
+# run_dir/deepwiki_index.json, which should show wger's index could surface the symbol --
+# the freshness precondition that makes SSA-solve meaningful here.
+#
+# RUN (after credits; ~8 trials x ~$0.40 = ~$3, neutral persona is mandatory):
+#   TC_SYSTEM_PROMPT_VARIANT=neutral tcrun run -c configs/wger-positive-control.yaml --cost-cap 8
+# Raise `orderings` for a tighter SSA-solve rate; this is the cost floor for "the lure bites".
+
+# Path-typed fields (content-hashed into run_id) -- identical artifacts to the Stage 1 config.
+task_set: tasks/wger-ambiguity.jsonl     # 1 ambiguous query (exp-amb-wger-001); deepwiki CAN solve it
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - github_mcp
+
+distractors:
+  - deepwiki
+  - git_mcp
+  - filesystem_mcp
+
+N: [4]
+runs_per_cell: 1
+orderings: 8                             # 1 query x 8 orderings = 8 trials; small, enough to confirm SSA-solve > 0
+model: claude-sonnet-4-6
+host: claude-desktop
+seed: 42
+temperature: 1.0                         # match Stage 1 sampling (stochastic trajectories)
+
+tool_listing_strategy: full              # retriever OFF: the honest crowding condition
+include_padded_n1_control: false         # not a capacity test; this validates the lure
+include_no_mcp_baseline: false           # wger no-MCP floor already 0/5 (probe); not re-needed here
+include_random_tool_call_baseline: false
+ragmcp_replication: false
+
+out: results/wger-positive-control/
