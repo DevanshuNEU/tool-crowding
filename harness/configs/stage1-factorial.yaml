@@ -1,0 +1,79 @@
+# configs/stage1-factorial.yaml -- Phase F Stage 1 within-task 2x2 (DEFERRED, not yet run)
+#
+# WHY THIS EXISTS
+# The exploratory probes (FINDINGS.md) surfaced one directional signal: mis-routing
+# appears only under ambiguous-task x neutral-persona. But in the probes, "ambiguous"
+# and "named" were DIFFERENT tasks (wger vs github-named), so framing co-varied with
+# task -- the confound called out in FINDINGS "Threats to validity". This config
+# removes that confound: tasks/stage1-factorial.jsonl carries 5 post-cutoff anchors,
+# each emitted TWICE (s1-amb-* and s1-named-*) with IDENTICAL ground truth, differing
+# ONLY in whether the repo is named. So Factor B (task ambiguity) is now within-task.
+#
+# THE 2x2 (this is the run that produces a result, not another null):
+#   Factor A -- agent persona  : {code-retrieval, neutral}  swept at RUN level
+#                                via TC_SYSTEM_PROMPT_VARIANT (hashed into run_id)
+#   Factor B -- task framing    : {target-named, ambiguous}  encoded in the task set
+# Run this config TWICE, once per persona, to fill all four cells:
+#   TC_SYSTEM_PROMPT_VARIANT=code-retrieval tcrun run -c configs/stage1-factorial.yaml --cost-cap 25
+#   TC_SYSTEM_PROMPT_VARIANT=neutral        tcrun run -c configs/stage1-factorial.yaml --cost-cap 25
+#
+# TOPOLOGY: identical to the interaction probe (wger-ambiguity-probe.yaml) so results
+# are comparable -- primary github_mcp + the deepwiki lure + git_mcp + filesystem_mcp,
+# N=4, retriever OFF. deepwiki is the pre-registered LURE, never a grounded route;
+# solving_server == deepwiki on a pass == lured (the measured interference).
+#
+# *** PENDING PRE-RUN GATES (do NOT spend until all three pass on the 5 anchors) ***
+# Per tasks/_gen_stage1_factorial.py, the anchors are verified post-cutoff + verbatim
+# + copyleft, but these canonical hygiene gates are still PENDING (Phase F is DRAFT,
+# not locked):
+#   1. 5-gram contamination audit (mining/audit_ngrams) -- $0, local
+#   2. deepwiki-lure-fresh check (lure indexes each repo + returns the symbol) -- ~$0
+#   3. no-MCP 0/5 baseline per anchor (model cannot name the symbol from memory) -- small API
+# Running confirmatory trials before these pass violates QUERY_SET_HYGIENE.md and the
+# CLAUDE.md hard rule. Close them first; this is the cheapest falsification step.
+#
+# COST (honest estimate; framing-split from the probe data, ~$0.18/named + ~$0.39/amb):
+#   per persona run = 10 queries (5 named + 5 amb) x 1 cell (N=4) x `orderings`.
+#   Two persona runs total = 20 x orderings trials.
+#     orderings=1 : 20 trials  ~ $5.70   (1 ordering reintroduces the position-bias
+#                                         confound that weakened the probe -- avoid as
+#                                         the confound-resolver)
+#     orderings=2 : 40 trials  ~ $11.40
+#     orderings=3 : 60 trials  ~ $17.10  (default below; honest floor for position-bias
+#                                         control across both orderings of the lure)
+#     orderings=5 : 100 trials ~ $28.50  (pilot-grade, ~25/cell, matches the pre-reg DRAFT)
+#   Raise `orderings` for tighter position-bias control; --cost-cap is the hard guardrail.
+
+# Path-typed fields (content-hashed into run_id) -- identical artifacts to the probe configs.
+task_set: tasks/stage1-factorial.jsonl
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - github_mcp
+
+distractors:
+  - deepwiki
+  - git_mcp
+  - filesystem_mcp
+
+N: [4]
+runs_per_cell: 1
+orderings: 3                             # position-bias control; see cost ladder above
+model: claude-sonnet-4-6
+host: claude-desktop
+seed: 42
+
+tool_listing_strategy: full              # retriever OFF: the honest crowding condition
+include_padded_n1_control: false         # this arm isolates framing x ambiguity, not capacity
+include_no_mcp_baseline: false           # run the no-MCP gate separately, before this (see above)
+include_random_tool_call_baseline: false
+ragmcp_replication: false
+
+out: results/stage1-factorial/
