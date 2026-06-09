@@ -165,6 +165,23 @@ This work extends, rather than originates, multi-tool interference measurement. 
 
 Community qualitative observations on multi-MCP interference (Simon Willison's _Too many MCPs_, Anthropic's _Code Execution with MCP_ engineering blog, Block's Linear MCP restructure, Cursor's 40-tool cap) anchored the project's motivation.
 
+## Support this research
+
+This is a self-funded, open-methodology research project. The harness, design docs, and
+exploratory probes are done; the confirmatory runs are gated on Anthropic API credits,
+and every run is small, reproducible, and published regardless of outcome (negative
+results welcome). The compute asks are deliberately tiny and map to specific deliverables:
+
+| Tier | What it funds | Cost |
+| ---- | ------------- | ---- |
+| **Minimum real result** | The within-task 2×2 factorial (`configs/stage1-factorial.yaml`, 60 trials at 3 orderings) — turns the directional probe into a confound-clean, position-bias-controlled pilot | **~$20** |
+| **Full pre-registered pilot** | The RQ1 count sweep over N ∈ {1, 5, 10, 15, 20}, ≥50 queries × 5 orderings, single model (`design/PILOT_V0.md`) | **~$200** |
+
+Costs are estimated at the measured ~$0.18 (named-target) / ~$0.39 (ambiguous) per-trial
+rate from the committed probe data, so they may move with trajectory length. If you want
+to fund a specific run, [support it on Ko-fi](https://ko-fi.com/devanshuc) — or open
+an issue to collaborate. Sponsored runs are acknowledged in the preprint.
+
 ## Citation
 
 If you use this benchmark, methodology, or data, please cite via [CITATION.cff](CITATION.cff) or:
