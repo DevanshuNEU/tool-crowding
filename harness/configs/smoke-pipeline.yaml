@@ -1,0 +1,68 @@
+# configs/smoke-pipeline.yaml -- cheapest end-to-end LIVE pipeline smoke (~$0.20, 1 trial)
+#
+# PURPOSE: answer "will the real run crash / waste credits?" for pocket change, BEFORE any
+# science-scale spend. This is NOT a science run -- 1 trial, 1 named-target query, no
+# statistical meaning. It is purely "does the rocket light without exploding on the pad."
+#
+# WHAT ONE TRIAL EXERCISES (the full Stage-1 topology, so nothing is left untested):
+#   - All four servers SPAWN: github_mcp + git_mcp + filesystem_mcp (Docker) + deepwiki
+#     (hosted). If Docker is down / an image is unpulled / a digest drifted / deepwiki is
+#     unreachable, the run fails when the pool OPENS -- before any paid API call (~$0).
+#   - The deepwiki-index recorder fires (deepwiki is in the pool): run start writes
+#     run_dir/deepwiki_index.json for pylint-dev/pylint -- validates the new hook live.
+#   - One real github_mcp trajectory completes (Docker + PAT auth + tool calls), the result
+#     is scored, trials.jsonl is written, and cost_usd is recorded.
+#   - temp=1.0 sampling is accepted by the API in our exact request shape (top_p removed) --
+#     the same sampling Stage 0 / Stage 1 use.
+#
+# WHY IT IS CHEAP: a NAMED-target task (visit_call in pylint-dev/pylint) routes unambiguously
+# to github_mcp and resolves in ~2-3 calls, so even at N=4 the single trial is ~$0.20. The
+# --cost-cap 1 below is a hard 5x backstop in case the trajectory wanders.
+#
+# DELIBERATELY OFF: include_no_mcp_baseline (the empty-tools API path is unproven against the
+# live API -- it needs its OWN tiny smoke before Stage 1 turns it on; don't validate an
+# unproven path inside the crash test).
+#
+# GREEN (pipeline healthy): trials.jsonl has 1 row, cost_usd recorded, error_type in
+#   {none, wrong_answer}; run_dir/deepwiki_index.json written with a pylint-dev/pylint entry.
+# RED (fix before spending more): crash at pool-open (Docker/server/deepwiki problem, ~$0
+#   spent), or error_type in {server_fault, api_fault, harness_bug, latency_timeout}.
+#
+# RUN (after Docker is up + key/PAT confirmed):
+#   tcrun validate -c configs/smoke-pipeline.yaml          # $0 offline config/artifact check
+#   tcrun run -c configs/smoke-pipeline.yaml --cost-cap 1  # ~$0.20 live; pool-open guards spend
+
+# Path-typed fields (content-hashed into run_id) -- identical artifacts to the Stage 1 config.
+task_set: tasks/github_smoke.jsonl       # 1 named-target query (v1-pub-001), resolves fast, has source_repo
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - github_mcp
+
+distractors:                             # full Stage-1 topology so the smoke spawns every server Stage 1 will
+  - deepwiki
+  - git_mcp
+  - filesystem_mcp
+
+N: [4]
+runs_per_cell: 1
+orderings: 1                             # 1 query x 1 N x 1 ordering x 1 rep = 1 trial (~$0.20)
+model: claude-sonnet-4-6
+host: claude-desktop
+seed: 42
+temperature: 1.0                         # validate the exact Stage-1 sampling shape live
+
+tool_listing_strategy: full
+include_padded_n1_control: false
+include_no_mcp_baseline: false           # unproven empty-tools path stays OFF in the crash test
+include_random_tool_call_baseline: false
+ragmcp_replication: false
+
+out: results/smoke-pipeline/
