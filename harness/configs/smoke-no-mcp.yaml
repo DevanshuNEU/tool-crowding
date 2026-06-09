@@ -1,0 +1,63 @@
+# configs/smoke-no-mcp.yaml -- no-MCP empty-tools live smoke (~$0.30, 2 trials)
+#
+# PURPOSE: validate the ONE remaining unproven live path before Stage 1 turns the
+# baseline on -- the N=0 "no-MCP" arm, where _invoke_api must omit `tools` entirely and
+# the live API must accept a no-tools request. If the API 400s on empty tools or the N=0
+# trial mis-records, we learn it here for ~$0.30, not mid-Stage-1.
+#
+# WHY 2 TRIALS (not 1): the no-MCP arm emits 1 cell per query at N=0, but enumerate_cells
+# always also emits the normal N cells, and a real task carries a required primary_server
+# (so N=[] would HALT, not isolate the arm). So N=[1] yields exactly:
+#   - 1 GROUNDED trial (N=1, github_mcp): the model retrieves with tools (~$0.20, needs Docker)
+#   - 1 NO-MCP trial (N=0, empty tools): the unproven path being validated (~$0.10, no servers)
+# The grounded trial is the cheapest the enumerator allows AND a useful contrast.
+#
+# WHAT THE N=0 TRIAL PROVES (the uncontaminated floor): the model is asked the post-cutoff
+# pylint symbol `visit_call` (introduced 2026-05-22) with NO tools. It should NOT be able to
+# name it from memory -> pass=False is EXPECTED and GOOD (that is the 0/N floor that makes any
+# tool-sourced pass meaningful). The grounded trial should retrieve it (pass=True).
+#
+# GREEN (path healthy): two trial rows. The N=0 row has error_type=none, an empty server_set,
+#   and a recorded cost_usd -- i.e. the empty-tools API call SUCCEEDED. pass=False on the N=0
+#   row is the expected floor, not a failure.
+# RED (fix before Stage 1 enables no-MCP): the N=0 row shows error_type in {api_fault,
+#   harness_bug} (the empty-tools request was rejected or mishandled), or the run crashed.
+#
+# NOTE: deepwiki is not in this pool, so the deepwiki-index hook does not fire here
+# (smoke-pipeline.yaml covers that path). cost-cap 1 = ~3x backstop.
+#
+# RUN (after Docker up + key confirmed):
+#   tcrun validate -c configs/smoke-no-mcp.yaml          # $0 offline config/artifact check
+#   tcrun run -c configs/smoke-no-mcp.yaml --cost-cap 1  # ~$0.30 live (1 grounded + 1 no-MCP)
+
+# Path-typed fields (content-hashed into run_id) -- identical artifacts to the other configs.
+task_set: tasks/github_smoke.jsonl       # post-cutoff pylint symbol; the no-MCP trial tests "can the model name it without tools" (expected: no)
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - github_mcp
+
+distractors: []                          # N=1 grounded cell needs only the primary; the N=0 arm spawns nothing
+
+N: [1]
+runs_per_cell: 1
+orderings: 1                             # 1 grounded trial; the no-MCP arm adds 1 (N=0) -> 2 trials total
+model: claude-sonnet-4-6
+host: claude-desktop
+seed: 42
+temperature: 1.0                         # validate the empty-tools path at the Stage-1 sampling
+
+tool_listing_strategy: full
+include_padded_n1_control: false
+include_no_mcp_baseline: true            # THE POINT: emits the N=0 empty-tools arm
+include_random_tool_call_baseline: false
+ragmcp_replication: false
+
+out: results/smoke-no-mcp/
