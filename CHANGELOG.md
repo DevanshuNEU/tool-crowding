@@ -4,6 +4,10 @@ All notable changes to tool-crowding are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Research: pre-registered no-MCP floor gate holds on the Stage-1 anchors (2026-06-11 UTC)
+
+- Ran the Phase F no-MCP floor gate (`harness/configs/floor-stage1-nomcp.yaml`, task file `harness/tasks/floor-named-5.jsonl`, run_id `56bd3276`) on the 5 named Stage-1 anchors at temperature 1.0: **0/5 passed with no tools** (all `agent_gave_up`), and the `github_mcp`-only positive control passed **2/2 completed** trials (3 `api_fault`: two 429 rate limits, one connection error). The earlier `smoke-no-mcp` run (run_id `29b3ddd0`) shows the floor can leak when the target name is convention-derivable (`visit_call`). Raw records committed under `harness/analysis/gate_data/` with one redaction (org id in two error strings, original SHA-256 recorded). Summary in `RESULTS.md`. Gate check only: no MPD, no confirmatory data. Spend $1.71.
+
 ### Research — exploratory probe phase: a framing-gated ambiguity effect (2026-05-31)
 
 - Four cheap probes (4–5 trials each) moved the headline twice and landed on an **interaction**: tool discrimination is robust to server *count* (N=6 dissimilar → 0 mis-routing) and to surface *similarity* with a named target (N=4 → 0), and even to task *ambiguity* under a code-retrieval persona (0), **but** under a *neutral* agent persona an ambiguous task lets a doc-Q&A lure (`deepwiki`) solve the task (1/4 trials) and lifts distractor exploration from 0/5 to 2/4 trials. The earlier "discrimination is robust" read was confounded by the `code-retrieval assistant` system prompt. Full write-up, gates, run_ids, and threats-to-validity in **`FINDINGS.md`**. EXPLORATORY — no effect sizes; the pre-registered 2×2 factorial (persona × task-framing) is the next step.

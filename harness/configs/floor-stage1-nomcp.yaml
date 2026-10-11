@@ -1,0 +1,68 @@
+# configs/floor-stage1-nomcp.yaml -- Phase F PENDING GATE: no-MCP 0/5 floor on the REAL anchors
+#
+# PURPOSE: run the pre-registered no-MCP 0/5 baseline gate (PRE_REGISTRATION.md / the
+# Phase F provenance note; _gen_stage1_factorial.py:19) on the 5 NAMED Stage-1 anchors at
+# the Stage-1 sampling (temp 1.0). This is NOT a methodology change -- it executes a gate
+# the design says must pass BEFORE any confirmatory Stage-1 spend.
+#
+# WHY THIS RUN EXISTS NOW: smoke-no-mcp (visit_call) leaked a no-MCP pass at temp 1.0, but
+# visit_call is convention-derivable ("visits Call nodes" -> visit_<NodeType>). The 5 real
+# anchors have NON-derivable symbols (parse_distribution_file_UnionTech, split_dict_to_fit_to_size,
+# repo_matches_exact_repos, build_localization_prompt, path_from_root) and the symbol is NEVER
+# in the prompt (contamination invariant, agent.py:114-118). The oracle's first gate is
+# `ground_truth_symbol in returned_snippet`, so a confabulated N=0 answer must INVENT the exact
+# symbol -- which it cannot. EXPECTED: no-MCP floor = 0/5 (gate holds; smoke leak was task-specific).
+#
+# NAMED variant deliberately chosen: it carries the repo name (most bag-of-words hints), so it
+# is the MOST leak-prone of the two framings. If the floor is clean here it is clean for ambiguous.
+#
+# TOPOLOGY: N=[1] + no distractors so the GROUNDED cell is the cheapest possible (github_mcp
+# only) -- the enumerator forces a grounded cell per query (N must be non-empty), so we make it
+# cheap and treat it as a positive control (do the anchors retrieve at temp 1.0?). The N=0
+# no-MCP arm is the actual gate.
+#
+# WHAT EACH ROW MEANS:
+#   N=0 row, pass=False  -> GATE HOLDS (the floor is clean; any tool-sourced pass is meaningful)
+#   N=0 row, pass=True   -> GATE FAILS for that anchor (read its trace: confabulation vs real recall)
+#   N=1 row, pass=True   -> positive control OK (anchor is retrievable at temp 1.0)
+#
+# TRIALS: 5 named queries -> 5 grounded (N=1) + 5 no-MCP (N=0) = 10 trials.
+# COST (honest): grounded ~$0.15 each (~$0.75) + no-MCP ~$0.06 each (~$0.30) = ~$1.05.
+#   --cost-cap 1.5 is the hard ceiling. Credits cannot go negative; if the key is near-empty
+#   the run api_faults after ~1 trial (that itself answers "did the top-up land").
+#
+# RUN:
+#   tcrun validate -c configs/floor-stage1-nomcp.yaml           # $0 offline
+#   tcrun run -c configs/floor-stage1-nomcp.yaml --cost-cap 1.5 # ~$1.05 live
+
+# Path-typed fields (content-hashed into run_id) -- byte-identical anchors to stage1-factorial.jsonl
+task_set: tasks/floor-named-5.jsonl      # the 5 NAMED anchors, extracted verbatim from stage1-factorial.jsonl
+oracle: tcrun/oracles/pass_v1.py
+servers_pinned: tcrun/servers_pinned.yaml
+descriptions: pool/descriptions.json
+endpoints: models/endpoints.json
+environment: environment.lock
+padding_corpus: ../design/fake_tool_corpus.jsonl
+embedder: models/embedder.json
+
+# Non-path fields (value-hashed)
+primary_servers:
+  - github_mcp
+
+distractors: []                          # cheapest grounded cell (N=1 = primary only); the N=0 arm spawns nothing
+
+N: [1]
+runs_per_cell: 1
+orderings: 1                             # 5 queries x 1 N x 1 ordering x 1 rep = 5 grounded; no-MCP adds 5 (N=0) = 10
+model: claude-sonnet-4-6
+host: claude-desktop
+seed: 42
+temperature: 1.0                         # Stage-1 sampling: the floor must hold at the temp Stage 1 uses
+
+tool_listing_strategy: full
+include_padded_n1_control: false
+include_no_mcp_baseline: true            # THE GATE: emits the N=0 empty-tools floor arm per anchor
+include_random_tool_call_baseline: false
+ragmcp_replication: false
+
+out: results/floor-stage1-nomcp/
